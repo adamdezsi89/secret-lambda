@@ -1,0 +1,236 @@
+# Auto detect text files and perform LF normalization
+# This will handle all files NOT found below
+* text=auto
+
+
+# Git
+.gitattributes text eol=lf
+.gitignore     text eol=lf
+.gitconfig     text eol=lf
+.gitmodules    text eol=lf
+pre-commit     text eol=lf
+commit-msg     text eol=lf
+post-merge     text eol=lf
+
+
+# Github Linguist
+*.md  linguist-detectable
+*.sql linguist-detectable=true
+*.sql linguist-language=sql
+
+
+# IDE and build tools
+.editorconfig      text eol=lf
+*.sublime-settings text eol=lf
+.prettierignore    text eol=lf
+
+
+# Documentation
+*.md         text eol=lf diff=markdown
+*.markdown   text eol=lf diff=markdown
+AUTHORS      text
+CHANGELOG    text
+CHANGES      text
+CONTRIBUTING text
+COPYING      text
+copyright    text
+*COPYRIGHT*  text
+INSTALL      text
+license      text
+LICENSE      text
+NEWS         text
+readme       text
+*README*     text
+TODO         text
+
+
+# Documents
+*.txt    text eol=lf
+*.drawio text eol=lf
+*.doc    binary diff=astextplain
+*.docx   binary diff=astextplain
+*.xls    binary diff=astextplain
+*.xlsx   binary diff=astextplain
+*.pdf    binary diff=astextplain
+*.rtf    diff=astextplain
+*.adoc   text
+*.epub   diff=astextplain
+
+
+# Scripts
+*.sh   text eol=lf
+*.bash text eol=lf
+*.ksh  text eol=lf
+*.zsh  text eol=lf
+*.fish text eol=lf
+# These are explicitly Windows files and should use crlf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+
+# Executables
+*.exe binary
+*.dll binary
+*.pyc binary
+*.go  -text diff=golang
+
+
+# Archives
+*.7z    binary
+*.bz    binary
+*.bz2   binary
+*.bzip2 binary
+*.gz    binary
+*.lz    binary
+*.lzma  binary
+*.rar   binary
+*.tar   binary
+*.taz   binary
+*.tbz   binary
+*.tbz2  binary
+*.tgz   binary
+*.tlz   binary
+*.txz   binary
+*.xz    binary
+*.Z     binary
+*.zip   binary
+*.zst   binary
+
+
+# Serialisation
+*.json       text eol=lf diff=json
+*.toml       text
+*.xml        text eol=lf diff=xml
+*.yaml       text eol=lf diff=yaml
+*.yml        text eol=lf diff=yaml
+*.properties text eol=lf
+*.csv        text eol=crlf
+
+
+# Schema descriptor
+*.avsc       text eol=lf
+
+
+# Spring Framework
+*.factories text eol=lf
+
+
+# Java sources
+*.java       text eol=lf diff=java
+*.kt         text eol=lf diff=kotlin
+*.groovy     text eol=lf diff=java
+*.scala      text eol=lf diff=java
+*.gradle     text eol=lf diff=java
+*.gradle.kts text eol=lf diff=kotlin
+*.jsp        text eol=lf
+*.jspf       text eol=lf
+*.jspx       text eol=lf
+
+
+# Java binaries
+*.class binary
+*.ear   binary
+*.jar   binary
+*.so    binary
+*.war   binary
+*.jks   binary
+
+
+# Java build-tool wrapper scripts and configs
+mvnw     text eol=lf
+gradlew  text eol=lf
+*.config text eol=lf
+
+
+# Scala build-tool scripts and configs
+*.sbt text eol=lf
+
+
+# SQL
+*.sql text
+
+
+# Docker
+Dockerfile text eol=lf
+
+
+# Node
+package.json      text eol=lf
+package-lock.json text eol=lf -diff
+
+
+# Python
+# TODO
+
+
+# Web
+*.css   text eol=lf diff=css
+*.scss  text eol=lf diff=css
+*.sass  text eol=lf
+*.less  text eol=lf
+*.htm   text eol=lf diff=html
+*.html  text eol=lf diff=html
+*.xhtml text eol=lf diff=html
+*.js    text eol=lf
+*.ts    text eol=lf
+
+
+# Templates
+*.handlebars text eol=lf
+*.mustache   text eol=lf
+
+
+# Graphics
+*.bmp  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.tif  binary
+*.tiff binary
+*.ico  binary
+*.svg  text
+*.svgz binary
+*.eps  binary
+*.wbmp binary
+*.webp binary
+
+
+# Fonts
+*.ttf   binary
+*.eot   binary
+*.otf   binary
+*.woff  binary
+*.woff2 binary
+
+
+# Audio
+*.kar  binary filter=lfs diff=lfs merge=lfs
+*.m4a  binary filter=lfs diff=lfs merge=lfs
+*.mid  binary filter=lfs diff=lfs merge=lfs
+*.midi binary filter=lfs diff=lfs merge=lfs
+*.mp3  binary filter=lfs diff=lfs merge=lfs
+*.ogg  binary filter=lfs diff=lfs merge=lfs
+*.ra   binary filter=lfs diff=lfs merge=lfs
+
+
+# Video
+*.3gpp binary filter=lfs diff=lfs merge=lfs
+*.3gp  binary filter=lfs diff=lfs merge=lfs
+*.as   binary filter=lfs diff=lfs merge=lfs
+*.asf  binary filter=lfs diff=lfs merge=lfs
+*.asx  binary filter=lfs diff=lfs merge=lfs
+*.avi  binary filter=lfs diff=lfs merge=lfs
+*.fla  binary filter=lfs diff=lfs merge=lfs
+*.flv  binary filter=lfs diff=lfs merge=lfs
+*.m4v  binary filter=lfs diff=lfs merge=lfs
+*.mng  binary filter=lfs diff=lfs merge=lfs
+*.mov  binary filter=lfs diff=lfs merge=lfs
+*.mp4  binary filter=lfs diff=lfs merge=lfs
+*.mpeg binary filter=lfs diff=lfs merge=lfs
+*.mpg  binary filter=lfs diff=lfs merge=lfs
+*.ogv  binary filter=lfs diff=lfs merge=lfs
+*.swc  binary filter=lfs diff=lfs merge=lfs
+*.swf  binary filter=lfs diff=lfs merge=lfs
+*.webm binary filter=lfs diff=lfs merge=lfs

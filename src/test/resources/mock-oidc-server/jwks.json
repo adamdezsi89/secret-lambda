@@ -1,0 +1,21 @@
+{
+  "keys": [
+    {
+      "kid":"mock-oidc-ec256",
+      "kty":"EC",
+      "use":"sig",
+      "alg":"ES256",
+      "crv":"P-256",
+      "x":"1V8WPgdC_EyQ1Ke5CTy1rBmYTZ-99xwwcFpit-XEMfs",
+      "y":"8yO3rrg3hpBne-HeoY8qHF2mNGEU-dXQHrDYveU6e6g"
+    },
+    {
+      "kid":"mock-oidc-rs512",
+      "kty":"RSA",
+      "use":"sig",
+      "alg":"RS512",
+      "e":"AQAB",
+      "n":"rbN7YTs73sDBm7J-iFi-ie1N1ngqy2XfO948PwbBJUNv9Yp2ffUxYw32FuPph43vD47CmrZIDNARKoQB2lUHg42Ebvhxuu6toQW40FTWE5kbrT524lOhk8ya5H6BTh5uFU66EzsHxfmhxLFNvVWkvl-lYYIdz4lSzV2nOfleDl149qS1-Vp6Z0khglJGnmpXhpQi8AMpv0L-0Va7HrUPrzurZtn5JppMt6JHLmdFP9ExIjzyAJw_2VIyBYXQuXom_yIkSdEAOqOhAeyrfHtjepiZnQtmT5cSSY_XAAbTujy0GMx6-Noh-DkTeTKs_U3LYms_QZb0cj5i4MUKPHrjx3AxWd1i3SnmcRAP_GavQoUi5tmd3B8UQK04U9XfoQwNRt98bPjyZMitd-IAtE-g6uNmtkx8hVS4iJSpQbBS7khhpfcKd4B4S7E5npbULq7S8MsGAkHDFIw-VqRMJU_h5TAvTivn8K8pzQ2U2pVuB4-PlWKIfcTZ2wMYWP1tTTJd"
+    }
+  ]
+}

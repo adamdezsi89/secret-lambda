@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+	<!-- Some fields should be controlled only by the user, not any project, so they are always ignored and copied back from user or global level settings -->
+	<!--localRepository-->
+	<!--interactiveMode-->
+	<!--offline-->
+	<!--usePluginRegistry-->
+	<!--proxies-->
+	<!--servers.server[].{username,password,privateKey,passphrase,filePermissions,directoryPermissions}-->
+
+	<!-- This is a list of additional group identifiers that will be searched when resolving plugins by their prefix, i.e. when invoking a command line like "mvn prefix:goal". Maven will automatically add the group identifiers "org.apache.maven.plugins" and "org.codehaus.mojo" if these are not already contained in the list. -->
+	<!-- Project specific (additive only) -->
+	<pluginGroups>
+		<pluginGroup>fr.jcgay.maven.plugins</pluginGroup>
+	</pluginGroups>
+
+	<profiles>
+		<profile>
+			<id>bedrock-repositories</id>
+			<repositories>
+				<repository>
+					<id>local-repo</id>
+					<name>local repository</name>
+					<url>file://${user.home}/.m2/repository</url>
+					<layout>default</layout>
+					<releases>
+						<enabled>true</enabled>
+						<updatePolicy>always</updatePolicy>
+						<checksumPolicy>fail</checksumPolicy>
+					</releases>
+					<snapshots>
+						<enabled>true</enabled>
+						<updatePolicy>always</updatePolicy>
+						<checksumPolicy>warn</checksumPolicy>
+					</snapshots>
+				</repository>
+				<repository>
+					<id>central</id>
+					<name>Maven Central repository</name>
+					<url>https://repo.maven.apache.org/maven2</url>
+					<layout>default</layout>
+					<releases>
+						<enabled>true</enabled>
+						<updatePolicy>always</updatePolicy>
+						<checksumPolicy>fail</checksumPolicy>
+					</releases>
+					<snapshots>
+						<enabled>false</enabled>
+						<updatePolicy>always</updatePolicy>
+						<checksumPolicy>warn</checksumPolicy>
+					</snapshots>
+				</repository>
+				<repository>
+					<id>confluent</id>
+					<name>Confluent repository</name>
+					<url>https://packages.confluent.io/maven/</url>
+					<layout>default</layout>
+					<releases>
+						<enabled>true</enabled>
+						<updatePolicy>always</updatePolicy>
+						<checksumPolicy>fail</checksumPolicy>
+					</releases>
+					<snapshots>
+						<enabled>false</enabled>
+						<updatePolicy>always</updatePolicy>
+						<checksumPolicy>warn</checksumPolicy>
+					</snapshots>
+				</repository>
+			</repositories>
+		</profile>
+	</profiles>
+
+	<activeProfiles>
+		<activeProfile>bedrock-repositories</activeProfile>
+	</activeProfiles>
+</settings>
