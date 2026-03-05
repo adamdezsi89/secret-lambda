@@ -39,7 +39,7 @@ RUN mkdir -p /out && \
 ############################
 FROM public.ecr.aws/lambda/java:25 AS runtime
 
-COPY --from=build /out/lambda-oidc-authorizer.jar ${LAMBDA_TASK_ROOT}/lambda-oidc-authorizer.jar
+COPY --from=build /out/lambda-oidc-authorizer.jar ${LAMBDA_TASK_ROOT}/lib/lambda-oidc-authorizer.jar
 
 # Set the CMD to your handler (could also be done as a parameter override outside of the Dockerfile)
 CMD ["com.example.OidcAuthorizerHandler::handleRequest"]

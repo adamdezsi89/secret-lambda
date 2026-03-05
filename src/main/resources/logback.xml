@@ -1,0 +1,39 @@
+<configuration>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <timestamp>
+                    <fieldName>@timestamp</fieldName>
+                </timestamp>
+                <!--version/-->
+                <logLevel>
+                    <fieldName>lvl</fieldName>
+                </logLevel>
+                <!--logLevelValue>
+                    <fieldName>level_value</fieldName>
+                </logLevelValue-->
+                <loggerName>
+                    <fieldName>logger</fieldName>
+                </loggerName>
+                <message>
+                    <fieldName>msg</fieldName>
+                </message>
+                <threadName>
+                    <fieldName>thread</fieldName>
+                </threadName>
+                <mdc/>
+                <logstashMarkers/>
+                <arguments/>
+                <stackTrace class="net.logstash.logback.composite.loggingevent.StackTraceJsonProvider">
+					<fieldName>stack_trace</fieldName>
+                </stackTrace>
+            </providers>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+
+</configuration>

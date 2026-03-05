@@ -25,9 +25,10 @@ import java.util.UUID;
 
 public class MockOidcServer {
 
-    private static final String JWKS_PATH = "/mock-oidc-server/jwks.json";
-
     private static final String PRIVATE_KEY_PATH = "/mock-oidc-server/rs512-private.pem";
+
+    private static final String JWKS_LOCAL_PATH = "/mock-oidc-server/jwks.json";
+    private static final String JWKS_HOSTED_PATH = "/.well-known/jwks.json";
 
     private final RSAPrivateKey privateKey;
     private final WireMockServer wireMockServer;
@@ -38,7 +39,7 @@ public class MockOidcServer {
         this.wireMockServer = new WireMockServer(WireMockConfiguration.options().port(0));
         setupJwksEndpoint();
         this.wireMockServer.start();
-        this.jwksUrl = wireMockServer.baseUrl() + "/.well-known/jwks.json";
+        this.jwksUrl = wireMockServer.baseUrl() + JWKS_HOSTED_PATH;
     }
 
     public String getJwksUrl() {
@@ -94,9 +95,9 @@ public class MockOidcServer {
     }
 
     private void setupJwksEndpoint() {
-        try (InputStream inputStream = getClass().getResourceAsStream(JWKS_PATH)) {
+        try (InputStream inputStream = getClass().getResourceAsStream(JWKS_LOCAL_PATH)) {
             if (inputStream == null) {
-                throw new RuntimeException("JWKS file not found: " + JWKS_PATH);
+                throw new RuntimeException("JWKS file not found: " + JWKS_LOCAL_PATH);
             }
 
             String jwksContent = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);

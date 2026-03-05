@@ -1,0 +1,9 @@
+{
+  "acceptedIssuers": [
+    {
+      "iss": "https://test-issuer.com",
+      "jwksUrl": "https://test-issuer.com/.well-known/jwks.json",
+      "acceptedAlgorithms": ["RS512"]
+    }
+  ]
+}

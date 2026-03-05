@@ -1,0 +1,54 @@
+name: mock-s3
+services:
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console
+    tmpfs:
+      - /data
+    healthcheck:
+      # MinIO exposes a readiness endpoint
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/ready >/dev/null || exit 1"]
+      interval: 2s
+      timeout: 1s
+      retries: 30
+      start_period: 2s
+
+  # A short-lived helper container that prepares the bucket and uploads test files
+  # mc - MinIO Client commandline tool
+  minio-init:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: minio-initializer
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      set -e;
+      sleep 5;
+
+      echo '[minio-init] Setting alias test-minio...';
+      mc alias set test-minio http://minio:9000 minioadmin minioadmin;
+
+      echo '[minio-init] Creating bucket test-bucket (if not exists)...';
+      mc mb -p test-minio/test-bucket;
+
+      echo '[minio-init] Uploading issuers.json...';
+      mc cp /mounted-test-resources/issuers.json test-minio/test-bucket/issuers.json;
+
+      echo '[minio-init] Uploading permissions.yaml...';
+      mc cp /mounted-test-resources/permissions.yaml test-minio/test-bucket/permissions.yaml;
+
+      echo '[minio-init] Listing bucket contents:';
+      mc ls test-minio/test-bucket;
+      exit 0;
+      "
+    volumes:
+      - ./:/mounted-test-resources:ro

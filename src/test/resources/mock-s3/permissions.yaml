@@ -1,0 +1,19 @@
+openapi: 3.0.1
+info:
+  title: Security scopes
+  version: 1.0.0
+paths:
+  /test-endpoint-01:
+    get:
+      x-oidcScopes:
+        - TEST-SCOPE-01
+    post:
+      x-oidcScopes:
+        - TEST-SCOPE-02
+  /test-endpoint-02:
+    get:
+      x-oidcScopes:
+        - TEST-SCOPE-01
+        - TEST-SCOPE-02
+  /test-endpoint-03:
+    get:
