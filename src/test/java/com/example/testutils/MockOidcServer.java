@@ -47,16 +47,50 @@ public class MockOidcServer {
     }
 
     public String createSignedAccessToken(String subject, String issuer, String audience) {
+        return createSignedAccessToken(subject, issuer, audience, "openid profile email");
+    }
+
+    public String createExpiredAccessToken(String subject, String issuer, String audience) {
         try {
             JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
                     .subject(subject)
                     .issuer(issuer)
                     .audience(audience)
                     .jwtID(UUID.randomUUID().toString())
-                    .issueTime(Date.from(Instant.now()))
-                    .expirationTime(Date.from(Instant.now().plusSeconds(3600)))
+                    .issueTime(Date.from(Instant.now().minusSeconds(7200)))
+                    .expirationTime(Date.from(Instant.now().minusSeconds(3600)))
                     .claim("scope", "openid profile email")
                     .build();
+
+            JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.RS512)
+                    .keyID("mock-oidc-rs512")
+                    .build();
+
+            SignedJWT signedJWT = new SignedJWT(header, claimsSet);
+            RSASSASigner signer = new RSASSASigner(privateKey);
+            signedJWT.sign(signer);
+
+            return signedJWT.serialize();
+        } catch (JOSEException e) {
+            throw new RuntimeException("Failed to sign JWT", e);
+        }
+    }
+
+    public String createSignedAccessToken(String subject, String issuer, String audience, String scopes) {
+        try {
+            JWTClaimsSet.Builder claimsBuilder = new JWTClaimsSet.Builder()
+                    .subject(subject)
+                    .issuer(issuer)
+                    .audience(audience)
+                    .jwtID(UUID.randomUUID().toString())
+                    .issueTime(Date.from(Instant.now()))
+                    .expirationTime(Date.from(Instant.now().plusSeconds(3600)));
+
+            if (scopes != null) {
+                claimsBuilder.claim("scope", scopes);
+            }
+
+            JWTClaimsSet claimsSet = claimsBuilder.build();
 
             JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.RS512)
                     .keyID("mock-oidc-rs512")

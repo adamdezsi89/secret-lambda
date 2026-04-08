@@ -14,6 +14,7 @@
 | Operation is in `permissions.yaml`, requires scopes, but invalid token                       | 401     | `throw "Unauthorized"`                   |
 | Operation is in `permissions.yaml`, requires scopes, valid token, but scopes don't intersect | 403     | `Deny` policy                            |
 | Operation is in `permissions.yaml`, requires scopes, valid token, scopes intersect           | 200     | `Allow` policy                           |
+| Internal error (S3 unreachable, config parse failure, unexpected bug)                        | 500     | Exception propagates to Lambda runtime   |
 
 ## Authorization flow
   1. Extract path and HTTP method from the incoming REQUEST event
@@ -29,6 +30,35 @@
   6. Check if the token scopes intersect with the required scopes (OR logic)
      - **No intersection** &rarr; Deny (403)
      - **Intersection** &rarr; Allow (200)
+
+## Token validation
+The JWT is validated per-issuer using Nimbus JOSE + JWT processors built at cold start. Validation checks:
+  - **Type header** — accepts `at+jwt` (RFC 9068), `JWT`, and absent `typ` (PingFederate compatibility)
+  - **Algorithm** — only algorithms declared in `issuers.json` are accepted (prevents algorithm substitution)
+  - **Signature** — verified against the issuer's JWKS public keys
+  - **Claims** — exact `iss` match, required `sub` and `iat`, `exp` always enforced
+
+Scopes are extracted from the `scope` claim as a space-delimited string (OAuth2 standard).
+
+### JWKS retrieval resilience
+Each issuer's JWKS source is configured with:
+  - **Rate limiting** — at most one JWKS fetch per 30 seconds per issuer
+  - **Cache + refresh-ahead** — 1-hour TTL, background refresh 30 seconds before expiry
+  - **Retry** — one automatic retry on transient network errors
+  - **Outage tolerance** — stale JWKS served for up to 4 hours during IdP outages
+  - **Health reporting** — degraded/recovered transitions logged via SLF4J
+
+### Error code mapping
+| Cause                                          | Error code                    | HTTP |
+|------------------------------------------------|-------------------------------|------|
+| No Bearer token                                | `COMMON_MISSING_CREDENTIALS`  | 401  |
+| Malformed JWT                                  | `COMMON_INVALID_CREDENTIALS`  | 401  |
+| Bad signature, wrong algorithm, missing claims | `COMMON_INVALID_CREDENTIALS`  | 401  |
+| Unknown issuer                                 | `COMMON_INVALID_ISSUER`       | 401  |
+| Expired token                                  | `COMMON_EXPIRED_ACCESS_TOKEN` | 401  |
+| Insufficient scopes                            | `COMMON_ACCESS_DENIED`        | 403  |
+| Endpoint not configured                        | `COMMON_ACCESS_DENIED`        | 403  |
+| JWKS unreachable, config failure               | *(propagates as-is)*          | 500  |
 
 ## Authorization sequence
 ```mermaid
@@ -61,6 +91,93 @@ sequenceDiagram
 ```
 
 # Configuration
+
+## Environment variables
+
+### Required
+
+| Variable              | Type   | Description                                                |
+|-----------------------|--------|------------------------------------------------------------|
+| `APP_CONF_S3_REGION`  | String | AWS region of the S3 bucket (e.g. `eu-central-1`)          |
+| `APP_CONF_S3_BUCKET`  | String | S3 bucket containing `issuers.json` and `permissions.yaml` |
+| `APP_CONF_S3_TTL_SEC` | Long   | Cache TTL in seconds (must be > 0)                         |
+
+### Optional (test mode)
+
+Setting any of these activates test mode, which uses static credentials and a custom S3 endpoint (e.g. MinIO) instead of the AWS default credentials chain.
+
+| Variable | Description |
+|---|---|
+| `APP_TEST_CONF_S3_ENDPOINT` | Custom S3-compatible endpoint (e.g. `http://127.0.0.1:9000`) |
+| `APP_TEST_CONF_S3_ACCESS_KEY` | Access key for the custom endpoint |
+| `APP_TEST_CONF_S3_SECRET_KEY` | Secret key for the custom endpoint |
+
+## S3 configuration files
+
+Two files must be present in the configured S3 bucket:
+
+### `issuers.json`
+Defines the accepted OIDC token issuers.
+```json
+{
+  "acceptedIssuers": [
+    {
+      "iss": "https://idp.example.com",
+      "jwksUrl": "https://idp.example.com/.well-known/jwks.json",
+      "acceptedAlgorithms": ["RS512"]
+    }
+  ]
+}
+```
+- `iss` — expected value of the JWT `iss` claim (exact match)
+- `jwksUrl` — JWKS endpoint for signature verification
+- `acceptedAlgorithms` — allowed signing algorithms (prevents algorithm substitution)
+
+### `permissions.yaml`
+Defines endpoint-to-scope mappings using an OpenAPI 3.0.1 subset.
+```yaml
+openapi: 3.0.1
+info:
+  title: Security scopes
+  version: 1.0.0
+paths:
+  /protected-resource:
+    get:
+      x-oidcScopes:
+        - RESOURCE_READ
+    post:
+      x-oidcScopes:
+        - RESOURCE_WRITE
+  /public-resource:
+    get:
+      # No x-oidcScopes = public, no token required
+```
+- **`x-oidcScopes` present and non-empty** — token required, scopes checked (OR intersection)
+- **`x-oidcScopes` absent or empty** — public endpoint, token ignored
+- **Path/method not listed** — denied (403)
+
+## S3 caching and refresh
+  - Configuration files are cached in-memory with a TTL set by `APP_CONF_S3_TTL_SEC`
+  - On TTL expiry, the cache issues a conditional GET (`If-None-Match` with the stored ETag)
+    - **304 Not Modified** — TTL is reset, no data transfer
+    - **200 OK** — content and ETag are updated
+  - Per-key locking prevents redundant S3 requests under concurrent Lambda invocations
+  - Stale content is never served after an S3 error (security-critical for JWKS key rotations)
+
+## Cold start
+The Lambda constructor runs once per cold start, before any request is handled. It performs the following steps in order:
+  1. Load and validate environment variables
+  2. Create the S3 client (production or test mode based on env vars)
+  3. Initialize the in-memory file cache
+  4. Fetch `issuers.json` from S3 and parse it
+  5. Fetch `permissions.yaml` from S3 and parse it
+  6. Build JWKS sources and JWT processors for each configured issuer
+
+If any step fails, the Lambda does not start — it will not accept requests in a degraded state. AWS Lambda automatically retries the init on transient failures.
+
+## Request time
+  - `permissions.yaml` is re-read from cache per request (picks up TTL refreshes)
+  - JWT processors built at cold start are reused — changes to `issuers.json` require a new cold start to take effect
 
 ## Integration with the API gateway
   - configure the API gateway to make every request hit the lambda

@@ -3,7 +3,7 @@ package com.example;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayCustomAuthorizerEvent;
-import com.example.lambda.AuthorizerEventTokenExtractor;
+import com.example.lambda.AuthorizerEventValidator;
 import com.example.config.ConfigurationLoader;
 import com.example.config.EnvironmentConfigLoader;
 import com.example.config.IssuersReader;
@@ -12,7 +12,12 @@ import com.example.config.model.AcceptedIssuers;
 import com.example.json.ObjectMapperBuilder;
 import com.example.jwt.JwkSourceFactory;
 import com.example.jwt.JwtProcessorFactory;
+import com.example.jwt.TokenValidator;
+import com.example.lambda.exception.AccessDeniedException;
+import com.example.lambda.exception.ErrorCodeType;
+import com.example.lambda.exception.UnauthorizedException;
 import com.example.lambda.model.RestApiGwAuthorizerResponse;
+import com.example.config.model.Permissions;
 import com.example.s3.FileCache;
 import com.example.s3.S3ClientBuilder;
 import com.example.s3.S3FileCache;
@@ -22,6 +27,8 @@ import com.nimbusds.jwt.proc.ConfigurableJWTProcessor;
 import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.services.s3.S3Client;
 import tools.jackson.databind.ObjectMapper;
+
+import com.nimbusds.jwt.JWTClaimsSet;
 
 import java.io.IOException;
 import java.util.List;
@@ -57,34 +64,82 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
         configurationLoader = new ConfigurationLoader(fileCache, issuersReader, permissionsReader);
 
         // Warm up S3 file cache and build JWT infrastructure from the loaded issuers config.
-        // MalformedURLException is a subclass of IOException — one catch covers both.
         try {
             AcceptedIssuers issuersConfig = configurationLoader.getIssuersConfig();
+            LOG.info("Loaded issuers configuration: {} issuer(s)", issuersConfig.getAcceptedIssuers().size());
+
             configurationLoader.getPermissionsConfig();
+            LOG.info("Loaded permissions configuration.");
 
             List<AcceptedIssuers.Issuer> issuers = issuersConfig.getAcceptedIssuers();
             Map<String, JWKSource<SecurityContext>> jwkSources = JwkSourceFactory.create(issuers);
             jwtProcessors = JwtProcessorFactory.create(issuers, jwkSources);
+            LOG.info("Built JWT processors for {} issuer(s)", jwtProcessors.size());
         } catch (IOException e) {
-            throw new RuntimeException("Failed to initialise JWT infrastructure during cold start", e);
+            LOG.error("Cold start failed: {}", e.getMessage(), e);
+            throw new RuntimeException("Cold start failed: " + e.getMessage(), e);
         }
     }
 
     @Override
     public RestApiGwAuthorizerResponse handleRequest(APIGatewayCustomAuthorizerEvent event, Context context) {
-        LOG.info("Received request: {}", event.toString());
+        try {
+            AuthorizerEventValidator.validateEvent(event);
 
-        return AuthorizerEventTokenExtractor.extractToken(event)
-            .map(token -> {
-                // TODO: Validate token and check permissions
-                return RestApiGwAuthorizerResponse.builder("test-principalId")
+            String resource = event.getResource();
+            String httpMethod = event.getHttpMethod();
+            LOG.info("Received request: [{} {}]", httpMethod, resource);
+
+            Permissions permissions = configurationLoader.getPermissionsConfig();
+            Optional<List<String>> requiredScopes = permissions.requiredScopes(resource, httpMethod);
+
+            // Not configured → deny
+            if (requiredScopes.isEmpty()) {
+                throw new AccessDeniedException(
+                    "Operation [%s %s] is not configured in permissions".formatted(httpMethod, resource));
+            }
+
+            // Public → allow, skip token validation
+            if (requiredScopes.get().isEmpty()) {
+                LOG.info("Operation [{} {}] is public. Allowing without token validation.", httpMethod, resource);
+                return RestApiGwAuthorizerResponse.builder("anonymous")
                     .allowMethodArn(event.getMethodArn())
                     .build();
-            })
-            .orElseGet(() -> {
-                LOG.warn("No authorization token found. Returning DENY policy.");
-                return RestApiGwAuthorizerResponse.builder("anonymous")
-                    .build();
-            });
+            }
+
+            // Scopes required → extract token
+            Optional<String> token = AuthorizerEventValidator.extractBearerToken(event);
+            if (token.isEmpty()) {
+                throw new UnauthorizedException(ErrorCodeType.COMMON_MISSING_CREDENTIALS,
+                    "No Bearer token in Authorization header for operation [%s %s]".formatted(httpMethod, resource));
+            }
+
+            // Validate token (signature, algorithm, issuer, expiry, required claims)
+            JWTClaimsSet claims = TokenValidator.validate(token.get(), jwtProcessors);
+
+            // Extract scopes and check intersection (OR logic)
+            List<String> tokenScopes = TokenValidator.extractScopes(claims);
+            List<String> required = requiredScopes.get();
+            boolean hasIntersection = required.stream().anyMatch(tokenScopes::contains);
+            if (!hasIntersection) {
+                throw new AccessDeniedException(
+                    "Token scopes %s do not intersect with required scopes %s for [%s %s]"
+                        .formatted(tokenScopes, required, httpMethod, resource));
+            }
+
+            return RestApiGwAuthorizerResponse.builder(claims.getSubject())
+                .allowMethodArn(event.getMethodArn())
+                .build();
+
+        } catch (UnauthorizedException e) {
+            LOG.warn("Authentication failed [{}]: {}", e.getErrorCode(), e.getMessage());
+            throw new RuntimeException("Unauthorized");
+        } catch (AccessDeniedException e) {
+            LOG.warn("Access denied [{}]: {}", e.getErrorCode(), e.getMessage());
+            return RestApiGwAuthorizerResponse.builder("anonymous").build();
+        } catch (Exception e) {
+            LOG.error("Internal error: {}", e.getMessage(), e);
+            throw e;
+        }
     }
 }

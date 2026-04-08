@@ -7,25 +7,24 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Utility class for extracting the authorization token from API Gateway Custom Authorizer events.
+ * Utility class for validating API Gateway Custom Authorizer events
+ * and extracting the Bearer token from the Authorization header.
  */
 @Slf4j
-public final class AuthorizerEventTokenExtractor {
+public final class AuthorizerEventValidator {
 
     private static final String BEARER_PREFIX = "Bearer ";
 
-    private AuthorizerEventTokenExtractor() {}
+    private AuthorizerEventValidator() {}
 
     /**
-     * Extracts the token from the provided API Gateway Custom Authorizer event.
-     * Supports both TOKEN and REQUEST event types.
-     * Strips the "Bearer " prefix if present.
+     * Validates the incoming API Gateway event.
+     * Ensures the event is non-null and has a supported type (REQUEST).
      *
      * @param event the authorizer event
-     * @return an Optional containing the extracted token, or empty if valid event but no token found
-     * @throws MalformedEventException if the event is null or has no type
+     * @throws MalformedEventException if the event is null, has no type, or has an unsupported type
      */
-    public static Optional<String> extractToken(APIGatewayCustomAuthorizerEvent event) {
+    public static void validateEvent(APIGatewayCustomAuthorizerEvent event) {
         if (event == null) {
             LOG.error("Authorizer event is null");
             throw new MalformedEventException("APIGatewayCustomAuthorizerEvent must not be null");
@@ -47,13 +46,21 @@ public final class AuthorizerEventTokenExtractor {
             LOG.error("Unsupported authorizer event type: {}", type);
             throw new MalformedEventException("Unsupported authorizer event type: '" + type + "'. Only 'REQUEST' is supported.");
         }
+    }
 
+    /**
+     * Extracts the Bearer token from the Authorization header of a REQUEST event.
+     * Strips the "Bearer " prefix if present.
+     *
+     * @param event a validated REQUEST authorizer event
+     * @return an Optional containing the extracted token, or empty if no token found
+     */
+    public static Optional<String> extractBearerToken(APIGatewayCustomAuthorizerEvent event) {
         LOG.debug("Extracting token from REQUEST event.");
         String token = null;
 
         Map<String, String> headers = event.getHeaders();
         if (headers != null) {
-            // Try case-insensitive Authorization header
             token = headers.get("Authorization");
             if (token == null) {
                 token = headers.get("authorization");
@@ -65,9 +72,9 @@ public final class AuthorizerEventTokenExtractor {
                 LOG.trace("Found 'Bearer ' prefix, stripping it.");
                 token = token.substring(BEARER_PREFIX.length());
             }
-            LOG.debug("Successfully extracted token from {} event", type);
+            LOG.debug("Successfully extracted token from REQUEST event.");
         } else {
-            LOG.info("No authorization token found in {} event", type);
+            LOG.info("No authorization token found in REQUEST event.");
         }
 
         return Optional.ofNullable(token);
