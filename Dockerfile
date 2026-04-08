@@ -21,6 +21,8 @@ WORKDIR /workspace
 
 ENV MAVEN_OPTS="-Dmaven.repo.local=/workspace/.m2"
 
+COPY lombok.config ./
+
 COPY pom.xml ./
 
 RUN --mount=type=cache,target=/workspace/.m2 \

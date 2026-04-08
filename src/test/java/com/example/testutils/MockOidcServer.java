@@ -36,7 +36,7 @@ public class MockOidcServer {
 
     public MockOidcServer() {
         this.privateKey = loadPrivateKey();
-        this.wireMockServer = new WireMockServer(WireMockConfiguration.options().port(0));
+        this.wireMockServer = new WireMockServer(WireMockConfiguration.options().port(9090));
         setupJwksEndpoint();
         this.wireMockServer.start();
         this.jwksUrl = wireMockServer.baseUrl() + JWKS_HOSTED_PATH;
@@ -59,7 +59,7 @@ public class MockOidcServer {
                     .build();
 
             JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.RS512)
-                    .keyID("test-key-id")
+                    .keyID("mock-oidc-rs512")
                     .build();
 
             SignedJWT signedJWT = new SignedJWT(header, claimsSet);

@@ -3,6 +3,7 @@ package com.example;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayCustomAuthorizerEvent;
+import com.example.lambda.AuthorizerEventTokenExtractor;
 import com.example.config.ConfigurationLoader;
 import com.example.config.EnvironmentConfigLoader;
 import com.example.config.IssuersReader;
@@ -11,7 +12,7 @@ import com.example.config.model.AcceptedIssuers;
 import com.example.json.ObjectMapperBuilder;
 import com.example.jwt.JwkSourceFactory;
 import com.example.jwt.JwtProcessorFactory;
-import com.example.model.RestApiGwAuthorizerResponse;
+import com.example.lambda.model.RestApiGwAuthorizerResponse;
 import com.example.s3.FileCache;
 import com.example.s3.S3ClientBuilder;
 import com.example.s3.S3FileCache;
@@ -25,10 +26,11 @@ import tools.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Slf4j
-public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAuthorizerEvent, RestApiGwAuthorizerResponse> {
 
+public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAuthorizerEvent, RestApiGwAuthorizerResponse> {
     private final EnvironmentConfigLoader.Config config;
     private final S3Client s3Client;
     private final FileCache fileCache;
@@ -72,8 +74,17 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
     public RestApiGwAuthorizerResponse handleRequest(APIGatewayCustomAuthorizerEvent event, Context context) {
         LOG.info("Received request: {}", event.toString());
 
-        return RestApiGwAuthorizerResponse.builder("test-principalId")
-            .allowMethodArn(event.getMethodArn())
-            .build();
+        return AuthorizerEventTokenExtractor.extractToken(event)
+            .map(token -> {
+                // TODO: Validate token and check permissions
+                return RestApiGwAuthorizerResponse.builder("test-principalId")
+                    .allowMethodArn(event.getMethodArn())
+                    .build();
+            })
+            .orElseGet(() -> {
+                LOG.warn("No authorization token found. Returning DENY policy.");
+                return RestApiGwAuthorizerResponse.builder("anonymous")
+                    .build();
+            });
     }
 }

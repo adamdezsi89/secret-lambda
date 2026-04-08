@@ -36,7 +36,7 @@ class IssuersReaderTest {
 
             AcceptedIssuers.Issuer issuer = issuers.get(0);
             assertThat(issuer.getIss()).isEqualTo("https://test-issuer.com");
-            assertThat(issuer.getJwksUrl()).isEqualTo("https://test-issuer.com/.well-known/jwks.json");
+            assertThat(issuer.getJwksUrl()).isEqualTo("http://localhost:9090/.well-known/jwks.json");
             assertThat(issuer.getAcceptedAlgorithms()).containsExactly("RS512");
         }
     }

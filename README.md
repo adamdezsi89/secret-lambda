@@ -1,35 +1,124 @@
+# AWS Lambda OIDC authorizer
+  - This is a Java based AWS Lambda function
+  - It can authorize incoming HTTP requests on an AWS API gateway (2015 REST type)
+  - It supports OAuth2 OpenID Connect (OIDC) authentication protocol
+  - It validates JWT access tokens issued by an OIDC-compliant issuer
+
+## Authorization outcomes
+| Situation                                                                                    | Status  | Mechanism                                |
+|----------------------------------------------------------------------------------------------|---------|------------------------------------------|
+| Operation NOT in `permissions.yaml`                                                          | 403     | `Deny` policy                            |
+| Operation is in `permissions.yaml`, but requires no scopes (public)                          | 200     | `Allow` policy, token ignored if present |
+| Operation is in `permissions.yaml`, requires scopes, but no token                            | 401     | `throw "Unauthorized"`                   |
+| Operation is in `permissions.yaml`, requires scopes, but invalid token                       | 401     | `throw "Unauthorized"`                   |
+| Operation is in `permissions.yaml`, requires scopes, valid token, but scopes don't intersect | 403     | `Deny` policy                            |
+| Operation is in `permissions.yaml`, requires scopes, valid token, scopes intersect           | 200     | `Allow` policy                           |
+
+## Authorization sequence
 ```mermaid
 sequenceDiagram
   autonumber
   participant C as Client
-  participant AG as AWS API Gateway<br/>(REST API, 2015)
-  participant LA as Lambda Authorizer<br/>(TOKEN)
-  participant PF as PingFederate<br/>(OIDC / OAuth2 AS)
+  participant AG as API Gateway
+  participant LA as Authorizer
+  participant PF as PingFederate
 
-  C->>AG: HTTPS request<br/>Authorization: Bearer JWT
-note right of AG: Integration: Lambda Authorizer (TOKEN)<br/>Authorizer runs before backend integration
+  C->>AG: Request + Bearer JWT
+  AG->>LA: Invoke (REQUEST event)
 
-AG->>LA: Invoke authorizer (JSON event)
-note right of LA: Example TOKEN authorizer event (REST API):\n{\n  "type": "TOKEN",\n  "authorizationToken": "Bearer eyJhbGciOiJSUzUxMiIsImtpZCI6InRlc3QtcnM1MTItMSJ9....",\n  "methodArn": "arn:aws:execute-api:REGION:ACCOUNT:APIID/STAGE/GET/v1/accounts/123"\n}
+  alt Cache miss
+    LA->>PF: GET /.well-known/openid-configuration
+    PF-->>LA: issuer, jwks_uri
+    LA->>PF: GET /jwks
+    PF-->>LA: JWKS
+  end
 
-alt First run or cache expired
-LA->>PF: GET /.well-known/openid-configuration
-PF-->>LA: 200 OK (JSON)\n{ issuer, jwks_uri, ... }
-LA->>PF: GET /jwks
-PF-->>LA: 200 OK (JWKS)\n{ "keys": [ { "kid": "...", "kty": "RSA", ... } ] }
-else Cache hit
-note right of LA: Uses cached OIDC metadata + JWKS\n(TTL-based)
-end
+  note right of LA: Validate JWT (alg, kid, sig,<br/>iss, aud, exp/nbf) +<br/>check scopes vs permissions.yaml
 
-note right of LA: Validates access token:\n- alg allowlist (e.g., RS512)\n- kid selection + signature verification\n- iss/aud/exp/nbf (+ clock skew)\n- method+path permission check (local rules)
+  LA-->>AG: Policy (Allow/Deny) + context
 
-LA-->>AG: Authorizer response (policy + context)
-note right of AG: Example authorizer response:\n{\n  "principalId": "user-or-client-id",\n  "policyDocument": {\n    "Version": "2012-10-17",\n    "Statement": [\n      {\n        "Action": "execute-api:Invoke",\n        "Effect": "Allow",\n        "Resource": "arn:aws:execute-api:REGION:ACCOUNT:APIID/STAGE/GET/v1/accounts/123"\n      }\n    ]\n  },\n  "context": {\n    "sub": "123",\n    "scopes": "scope:read:accounts"\n  }\n}
+  alt Allow
+    AG-->>C: Backend response
+  else Deny
+    AG-->>C: 401 / 403
+  end
+```
 
-alt Policy = Allow
-note right of AG: API Gateway proceeds to the configured backend integration<br/>(e.g., Lambda proxy, HTTP, VPC link, etc.)
-AG-->>C: Backend response (HTTP)
-else Policy = Deny
-AG-->>C: 401/403 (API Gateway)
-end
+# Configuration
+
+## Integration with the API gateway
+  - configure the API gateway to make every request hit the lambda
+    - no auth caching
+      - set `authorizerResultTtlInSeconds` to 0
+    - no API gateway decisions (otherwise endpoints without an `Authorization` header would be rejected by API gateway before the lambda is invoked)
+      - set the event `type` to `request`
+      - leave `identitySource` unset
+  - the event type passed by the API gateway must be `REQUEST`
+  - `TOKEN` event type is not supported because it lacks essential information
+  - the lambda returns an IamPolicyResponse JSON structure to the API gateway
+
+# Testing and/or running locally
+
+## Standalone MinIO server
+
+### Start
+```
+docker compose -f src/test/resources/mock-s3/docker-compose.yaml up
+```
+
+### Stop
+```
+docker compose -f src/test/resources/mock-s3/docker-compose.yaml down
+```
+
+### WebUI
+http://127.0.0.1:9001/browser
+minioadmin / minioadmin
+
+## Build image with Docker
+```
+docker build -t com.example:lambda-oidc-authorizer .
+```
+
+## Run image locally with Docker, passing required environment variables
+This setup also requires a Minio running locally with Docker!
+```
+docker run --rm -p 9020:8080 \
+  -e APP_CONF_S3_REGION=eu-central-1 \
+  -e APP_CONF_S3_BUCKET=test-bucket \
+  -e APP_CONF_S3_TTL_SEC=5 \
+  -e APP_TEST_CONF_S3_ENDPOINT=http://host.docker.internal:9000 \
+  -e APP_TEST_CONF_S3_ACCESS_KEY=minioadmin \
+  -e APP_TEST_CONF_S3_SECRET_KEY=minioadmin \
+  com.example:lambda-oidc-authorizer
+```
+
+## Call locally running container over HTTP
+The Lambda Java runtime container exposes the Runtime Interface Emulator on port 8080 at a fixed path
+
+### TOKEN event type (not supported by the Lambda)
+```
+curl -XPOST "http://localhost:9020/2015-03-31/functions/function/invocations" \
+  -d '{
+    "type": "TOKEN",
+    "authorizationToken": "Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig",
+    "methodArn": "arn:aws:execute-api:eu-central-1:123456123456:12345678/example_stage/POST/example-resource/path param value/child-resource"
+  }'
+```
+
+### REQUEST event type
+```
+curl -XPOST "http://localhost:9020/2015-03-31/functions/function/invocations" \
+  -d '{
+    "type": "REQUEST",
+    "methodArn": "arn:aws:execute-api:eu-central-1:123456123456:12345678/example_stage/POST/example-resource/path%20param%20value/child-resource",
+    "resource": "/example-resource/{example-path-param}/child-resource",
+    "path": "/example-resource/path%20param%20value/child-resource",
+    "httpMethod": "POST",
+    "headers": {"Authorization": "Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig"},
+    "queryStringParameters": {"a": "20", "b": "30"},
+    "pathParameters": {"example-path-param": "path param value"},
+    "stageVariables": {"AUTHORIZER_LAMBDA_FUNCTION_NAME": "example_lambda_name", "AUTHORIZER_LAMBDA_FUNCTION_ALIAS_NAME": "example_lambda_alias"},
+    "requestContext": {"accountId": "123456123456", "apiId": "12345678", "stage": "example_stage"}
+  }'
 ```

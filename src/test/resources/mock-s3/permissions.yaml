@@ -17,3 +17,6 @@ paths:
         - TEST-SCOPE-02
   /test-endpoint-03:
     get:
+  /example-resource/{example-path-param}/child-resource:
+    post:
+      x-oidcScopes:

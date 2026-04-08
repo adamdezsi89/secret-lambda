@@ -22,9 +22,50 @@ import java.util.Optional;
  */
 @JsonDeserialize
 @JsonIgnoreProperties(ignoreUnknown = true)
+@lombok.extern.slf4j.Slf4j
 public record Permissions(
         @JsonProperty("paths") Map<String, PathItem> paths
 ) {
+
+    /**
+     * Lints the permissions configuration and logs warnings for public operations or configuration issues.
+     */
+    public void validate() {
+        if (paths == null || paths.isEmpty()) {
+            LOG.warn("Permissions configuration is empty or missing 'paths' root.");
+            return;
+        }
+
+        paths.forEach((path, item) -> {
+            if (item == null) {
+                LOG.warn("Path [{}] is defined but has no operations.", path);
+                return;
+            }
+            validateOperation(path, "GET", item.get);
+            validateOperation(path, "POST", item.post);
+            validateOperation(path, "PUT", item.put);
+            validateOperation(path, "DELETE", item.delete);
+            validateOperation(path, "PATCH", item.patch);
+            validateOperation(path, "HEAD", item.head);
+            validateOperation(path, "OPTIONS", item.options);
+            validateOperation(path, "TRACE", item.trace);
+        });
+    }
+
+    private void validateOperation(String path, String method, Operation op) {
+        if (op == null) return;
+
+        List<String> scopes = op.oidcScopes();
+        if (scopes == null || scopes.isEmpty()) {
+            LOG.warn("Operation [{} {}] is PUBLIC (x-oidcScopes is missing or empty).", method, path);
+        } else {
+            boolean hasEmptyScope = scopes.stream().anyMatch(s -> s == null || s.trim().isEmpty());
+            if (hasEmptyScope) {
+                LOG.warn("Operation [{} {}] contains empty scope strings in x-oidcScopes. " +
+                        "This may lead to unintended public access.", method, path);
+            }
+        }
+    }
 
     /**
      * Returns the required scopes for the given path and HTTP method.
