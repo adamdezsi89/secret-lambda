@@ -133,9 +133,12 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
         } catch (AccessDeniedException e) {
             LOG.warn("Access denied [{}]: {}", e.getErrorCode(), e.getMessage());
             return RestApiGwAuthorizerResponse.builder("anonymous").build();
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             LOG.error("Internal error: {}", e.getMessage(), e);
             throw e;
+        } catch (Exception e) {
+            LOG.error("Internal error: {}", e.getMessage(), e);
+            throw new RuntimeException(e);
         }
     }
 }

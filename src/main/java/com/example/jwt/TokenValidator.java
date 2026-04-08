@@ -2,6 +2,7 @@ package com.example.jwt;
 
 import com.example.lambda.exception.ErrorCodeType;
 import com.example.lambda.exception.UnauthorizedException;
+import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.proc.BadJOSEException;
 import com.nimbusds.jose.proc.SecurityContext;
 import com.nimbusds.jwt.JWTClaimsSet;
@@ -28,7 +29,7 @@ public final class TokenValidator {
      */
     public static JWTClaimsSet validate(
             String rawToken,
-            Map<String, ConfigurableJWTProcessor<SecurityContext>> processors) throws Exception {
+            Map<String, ConfigurableJWTProcessor<SecurityContext>> processors) throws JOSEException {
 
         // 1. Parse JWT (unverified) to peek at the issuer claim for processor routing
         SignedJWT jwt;
