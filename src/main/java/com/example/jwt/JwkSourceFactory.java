@@ -21,24 +21,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Builds a per-issuer map of resilient {@link JWKSource} instances from the runtime
- * {@link AcceptedIssuers} configuration.
- *
- * <p>Each source is configured with the full Nimbus "enhanced JWK retrieval" stack:
- * <ul>
- *   <li><b>Rate limiting</b> — at most one JWKS endpoint call per 30 s per issuer,
- *       guarding against thundering-herd fetches triggered by key-rotation bursts.</li>
- *   <li><b>Cache + refresh-ahead</b> — 1-hour TTL; a background refresh is triggered 30 s
- *       before expiry, ensuring callers are never blocked while a new key set is fetched.</li>
- *   <li><b>Retry</b> — one automatic retry on transient network errors before propagating failure.</li>
- *   <li><b>Outage tolerance</b> — stale JWKS served for up to 4 hours when the OIDC provider is
- *       unreachable, preventing complete authorizer failure during provider maintenance windows.</li>
- *   <li><b>Health reporting</b> — degraded / recovered transitions are logged via SLF4J
- *       (WARN on degradation, DEBUG on recovery).</li>
- * </ul>
- *
- * <p>A single {@link DefaultResourceRetriever} is shared across all issuers so that HTTP client
- * configuration (timeouts, response-size cap) is applied uniformly.
+ * Builds a per-issuer map of resilient JWK sources using the Nimbus enhanced retrieval stack:
+ * rate limiting, cache with refresh-ahead, retry, outage tolerance, and health reporting.
  */
 @Slf4j
 public final class JwkSourceFactory {
@@ -70,13 +54,7 @@ public final class JwkSourceFactory {
 
     private JwkSourceFactory() {}
 
-    /**
-     * Creates one resilient {@link JWKSource} per accepted issuer.
-     *
-     * @param issuers accepted OIDC issuers from the runtime configuration
-     * @return unmodifiable map from {@code iss} claim value to its {@link JWKSource}
-     * @throws MalformedURLException if any issuer's JWKS URL is syntactically invalid
-     */
+    /** Creates one resilient JWK source per accepted issuer, keyed by iss claim value. */
     public static Map<String, JWKSource<SecurityContext>> create(List<AcceptedIssuers.Issuer> issuers)
             throws MalformedURLException {
         Objects.requireNonNull(issuers, "issuers");
@@ -89,7 +67,7 @@ public final class JwkSourceFactory {
             sources.put(issuer.getIss(), buildForIssuer(issuer, retriever));
         }
 
-        LOG.info("JWK sources initialised for {} issuer(s): {}", sources.size(), sources.keySet());
+        LOG.info("JWK sources ready for {} issuer(s): {}", sources.size(), sources.keySet());
         return Collections.unmodifiableMap(sources);
     }
 
@@ -112,9 +90,9 @@ public final class JwkSourceFactory {
     healthListener(String iss) {
         return report -> {
             if (HealthStatus.HEALTHY.equals(report.getHealthStatus())) {
-                LOG.debug("JWKS source recovered: iss={}", iss);
+                LOG.debug("JWKS source recovered, iss={}", iss);
             } else {
-                LOG.warn("JWKS source degraded: iss={}, status={}, cause={}",
+                LOG.warn("JWKS source degraded, iss={}, status={}, cause={}",
                         iss,
                         report.getHealthStatus(),
                         report.getException() != null ? report.getException().getMessage() : "none");

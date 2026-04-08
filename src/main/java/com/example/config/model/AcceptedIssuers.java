@@ -6,9 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * Configuration model for issuers.json file.
- */
+/** Deserialized issuers.json — list of accepted OIDC issuers. */
 public final class AcceptedIssuers {
     
     private final List<Issuer> acceptedIssuers;
@@ -22,9 +20,7 @@ public final class AcceptedIssuers {
         return acceptedIssuers;
     }
     
-    /**
-     * Represents an OIDC issuer configuration.
-     */
+    /** Single OIDC issuer: iss claim value, JWKS URL, and accepted signing algorithms. */
     public static final class Issuer {
         private final String iss;
         private final String jwksUrl;

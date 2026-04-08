@@ -13,10 +13,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 /**
- * Provides parsed, TTL-refreshed configuration to the rest of the application.
- * Raw file loading and TTL-based caching are fully delegated to {@link FileCache};
- * parsing is delegated to the injected readers. Callers are shielded from all three
- * concerns and interact only with typed configuration models.
+ * Provides parsed, TTL-refreshed issuers and permissions configuration.
+ * Delegates file retrieval and caching to FileCache, parsing to the injected readers.
  */
 @Slf4j
 public final class ConfigurationLoader implements Closeable {
@@ -36,35 +34,29 @@ public final class ConfigurationLoader implements Closeable {
         this.permissionsReader = Objects.requireNonNull(permissionsReader, "permissionsReader");
     }
 
-    /**
-     * Returns the current issuers configuration.
-     * Content is refreshed from S3 when the TTL managed by {@link FileCache} expires.
-     */
+    /** Returns the current issuers config, refreshed from S3 on TTL expiry. */
     public AcceptedIssuers getIssuersConfig() throws IOException {
-        LOG.debug("Loading issuers configuration from file: {}", ISSUERS_FILE);
+        LOG.debug("Loading issuers config from {}", ISSUERS_FILE);
         String content = fileCache.getFile(ISSUERS_FILE);
         try (InputStream is = new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8))) {
             AcceptedIssuers result = issuersReader.read(is);
-            LOG.trace("Successfully loaded issuers configuration.");
+            LOG.trace("Issuers config loaded");
             return result;
         }
     }
 
-    /**
-     * Returns the current permissions configuration.
-     * Content is refreshed from S3 when the TTL managed by {@link FileCache} expires.
-     */
+    /** Returns the current permissions config, refreshed from S3 on TTL expiry. */
     public Permissions getPermissionsConfig() throws IOException {
-        LOG.debug("Loading permissions configuration from file: {}", PERMISSIONS_FILE);
+        LOG.debug("Loading permissions config from {}", PERMISSIONS_FILE);
         String content = fileCache.getFile(PERMISSIONS_FILE);
         try (InputStream is = new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8))) {
             Permissions result = permissionsReader.read(is);
-            LOG.trace("Successfully loaded permissions configuration.");
+            LOG.trace("Permissions config loaded");
             return result;
         }
     }
 
-    /** Closes the underlying {@link FileCache} and releases its S3 client. */
+    /** Closes the underlying file cache and its S3 client. */
     @Override
     public void close() {
         fileCache.close();

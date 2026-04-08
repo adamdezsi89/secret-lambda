@@ -9,16 +9,12 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Parsed endpoint-to-scope mapping derived from a permissions YAML file.
- * 
- * <p>Lookup semantics via {@link #requiredScopes}:
- * <ul>
- *   <li>{@link Optional#empty()} — path/method not present in config; caller should apply a
- *       default policy (typically deny).</li>
- *   <li>{@code Optional.of(emptyList)} — endpoint is configured but requires no scopes
- *       (publicly accessible).</li>
- *   <li>{@code Optional.of(nonEmptyList)} — endpoint requires all listed scopes.</li>
- * </ul>
+ * Endpoint-to-scope mapping from permissions.yaml.
+ *
+ * requiredScopes() returns:
+ *   empty()         — path/method not configured (deny)
+ *   of(emptyList)   — public, no scopes required
+ *   of(nonEmptyList) — scopes required
  */
 @JsonDeserialize
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -27,18 +23,16 @@ public record Permissions(
         @JsonProperty("paths") Map<String, PathItem> paths
 ) {
 
-    /**
-     * Lints the permissions configuration and logs warnings for public operations or configuration issues.
-     */
+    /** Lints the config — warns about public or misconfigured operations. */
     public void validate() {
         if (paths == null || paths.isEmpty()) {
-            LOG.warn("Permissions configuration is empty or missing 'paths' root.");
+            LOG.warn("Permissions config has no paths");
             return;
         }
 
         paths.forEach((path, item) -> {
             if (item == null) {
-                LOG.warn("Path [{}] is defined but has no operations.", path);
+                LOG.warn("Path {} has no operations", path);
                 return;
             }
             validateOperation(path, "GET", item.get);
@@ -57,23 +51,16 @@ public record Permissions(
 
         List<String> scopes = op.oidcScopes();
         if (scopes == null || scopes.isEmpty()) {
-            LOG.warn("Operation [{} {}] is PUBLIC (x-oidcScopes is missing or empty).", method, path);
+            LOG.warn("Operation [{} {}] is public — no x-oidcScopes", method, path);
         } else {
             boolean hasEmptyScope = scopes.stream().anyMatch(s -> s == null || s.trim().isEmpty());
             if (hasEmptyScope) {
-                LOG.warn("Operation [{} {}] contains empty scope strings in x-oidcScopes. " +
-                        "This may lead to unintended public access.", method, path);
+                LOG.warn("Operation [{} {}] has empty scope strings in x-oidcScopes", method, path);
             }
         }
     }
 
-    /**
-     * Returns the required scopes for the given path and HTTP method.
-     *
-     * @param path   request path, e.g. {@code /api/resource}
-     * @param method HTTP method; case-insensitive
-     * @return scopes if the endpoint is configured, empty Optional otherwise
-     */
+    /** Returns required scopes for the given path and HTTP method (case-insensitive). */
     public Optional<List<String>> requiredScopes(String path, String method) {
         if (paths == null) {
             return Optional.empty();

@@ -14,11 +14,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Orchestrates JWT validation by routing tokens to the correct per-issuer processor
- * and mapping Nimbus exceptions to the authorizer exception hierarchy.
- *
- * <p>Client errors (bad token) become {@link UnauthorizedException} (401).
- * Infrastructure errors (JWKS unreachable, crypto failures) propagate as-is (500).
+ * Routes a raw JWT to the correct per-issuer processor and maps Nimbus exceptions
+ * to UnauthorizedException (401). Infrastructure errors propagate as-is (500).
  */
 @Slf4j
 public final class TokenValidator {
@@ -26,15 +23,8 @@ public final class TokenValidator {
     private TokenValidator() {}
 
     /**
-     * Validates a raw JWT string against the configured processors.
-     *
-     * @param rawToken   the serialized JWT (without "Bearer " prefix)
-     * @param processors per-issuer processors keyed by {@code iss} claim value
-     * @return the validated claims set
-     * @throws UnauthorizedException if the token is malformed, expired, from an unknown issuer,
-     *                               or fails signature/claims verification
-     * @throws com.nimbusds.jose.RemoteKeySourceException if the JWKS endpoint is unreachable (propagates as 500)
-     * @throws com.nimbusds.jose.JOSEException            if a crypto operation fails (propagates as 500)
+     * Parses the JWT, resolves the issuer's processor, and runs full validation.
+     * Throws UnauthorizedException on client errors; lets infra errors (JWKS, crypto) propagate.
      */
     public static JWTClaimsSet validate(
             String rawToken,
@@ -86,13 +76,7 @@ public final class TokenValidator {
         }
     }
 
-    /**
-     * Extracts scopes from the validated JWT claims.
-     * Expects the {@code scope} claim as a space-delimited string (OAuth2 standard).
-     *
-     * @param claims validated claims set
-     * @return list of scope strings, empty if no scope claim present
-     */
+    /** Extracts scopes from the "scope" claim (space-delimited string). */
     public static List<String> extractScopes(JWTClaimsSet claims) {
         Object scopeValue = claims.getClaim("scope");
         if (scopeValue == null) {

@@ -7,18 +7,11 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 import tools.jackson.datatype.jsr310.JavaTimeModule;
 
-/**
- * Builder for creating configured ObjectMapper instances.
- */
+/** Factory for lenient JSON and YAML ObjectMapper instances. */
 public final class ObjectMapperBuilder {
 
     private ObjectMapperBuilder() {}
 
-    /**
-     * Creates a lenient ObjectMapper that is more permissive.
-     *
-     * @return configured ObjectMapper
-     */
     public static ObjectMapper createYamlLenient() {
         return YAMLMapper.builder()
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)

@@ -16,9 +16,7 @@ import software.amazon.awssdk.services.s3.S3Configuration;
 import java.net.URI;
 import java.time.Duration;
 
-/**
- * Builder for creating configured S3 clients.
- */
+/** Creates an S3 client — production (AWS default credentials) or test (MinIO with static credentials). */
 @Slf4j
 public final class S3ClientBuilder {
 
@@ -35,7 +33,7 @@ public final class S3ClientBuilder {
         } else {
             client = createS3Client(config.getS3Region());
         }
-        LOG.debug("S3 client created: region={}, endpoint={}",
+        LOG.debug("S3 client created, region={}, endpoint={}",
                 config.getS3Region(), config.hasTestConfiguration() ? config.getS3Endpoint() : "AWS default");
         return client;
     }

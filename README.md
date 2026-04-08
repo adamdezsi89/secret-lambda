@@ -6,15 +6,20 @@
   - It enforces scope-based access control per endpoint
 
 ## Authorization outcomes
-| Situation                                                                                    | Status  | Mechanism                                |
-|----------------------------------------------------------------------------------------------|---------|------------------------------------------|
-| Operation NOT in `permissions.yaml`                                                          | 403     | `Deny` policy                            |
-| Operation is in `permissions.yaml`, but requires no scopes (public)                          | 200     | `Allow` policy, token ignored if present |
-| Operation is in `permissions.yaml`, requires scopes, but no token                            | 401     | `throw "Unauthorized"`                   |
-| Operation is in `permissions.yaml`, requires scopes, but invalid token                       | 401     | `throw "Unauthorized"`                   |
-| Operation is in `permissions.yaml`, requires scopes, valid token, but scopes don't intersect | 403     | `Deny` policy                            |
-| Operation is in `permissions.yaml`, requires scopes, valid token, scopes intersect           | 200     | `Allow` policy                           |
-| Internal error (S3 unreachable, config parse failure, unexpected bug)                        | 500     | Exception propagates to Lambda runtime   |
+The lambda returns an IAM policy that is **deny-all by default** — only explicitly allowed method ARNs are permitted. If no allows are added, an explicit `Deny "*"` is emitted as a safety net.
+
+| Situation                                                                                    | Status | Error code                    | Mechanism                                |
+|----------------------------------------------------------------------------------------------|--------|-------------------------------|------------------------------------------|
+| Operation NOT in `permissions.yaml`                                                          | 403    | `COMMON_ACCESS_DENIED`        | `Deny` policy                            |
+| Operation is in `permissions.yaml`, but requires no scopes (public)                          | 200    |                               | `Allow` policy, token ignored if present |
+| Operation is in `permissions.yaml`, requires scopes, but no token                            | 401    | `COMMON_MISSING_CREDENTIALS`  | `throw "Unauthorized"`                   |
+| Operation is in `permissions.yaml`, requires scopes, but malformed token                     | 401    | `COMMON_INVALID_CREDENTIALS`  | `throw "Unauthorized"`                   |
+| Operation is in `permissions.yaml`, requires scopes, but unknown issuer                      | 401    | `COMMON_INVALID_ISSUER`       | `throw "Unauthorized"`                   |
+| Operation is in `permissions.yaml`, requires scopes, but expired token                       | 401    | `COMMON_EXPIRED_ACCESS_TOKEN` | `throw "Unauthorized"`                   |
+| Operation is in `permissions.yaml`, requires scopes, but invalid token (signature, claims)   | 401    | `COMMON_INVALID_CREDENTIALS`  | `throw "Unauthorized"`                   |
+| Operation is in `permissions.yaml`, requires scopes, valid token, but scopes don't intersect | 403    | `COMMON_ACCESS_DENIED`        | `Deny` policy                            |
+| Operation is in `permissions.yaml`, requires scopes, valid token, scopes intersect           | 200    |                               | `Allow` policy                           |
+| Internal error (S3 unreachable, config parse failure, unexpected bug)                        | 500    |                               | Exception propagates to Lambda runtime   |
 
 ## Authorization flow
   1. Extract path and HTTP method from the incoming REQUEST event
@@ -48,18 +53,6 @@ Each issuer's JWKS source is configured with:
   - **Outage tolerance** — stale JWKS served for up to 4 hours during IdP outages
   - **Health reporting** — degraded/recovered transitions logged via SLF4J
 
-### Error code mapping
-| Cause                                          | Error code                    | HTTP |
-|------------------------------------------------|-------------------------------|------|
-| No Bearer token                                | `COMMON_MISSING_CREDENTIALS`  | 401  |
-| Malformed JWT                                  | `COMMON_INVALID_CREDENTIALS`  | 401  |
-| Bad signature, wrong algorithm, missing claims | `COMMON_INVALID_CREDENTIALS`  | 401  |
-| Unknown issuer                                 | `COMMON_INVALID_ISSUER`       | 401  |
-| Expired token                                  | `COMMON_EXPIRED_ACCESS_TOKEN` | 401  |
-| Insufficient scopes                            | `COMMON_ACCESS_DENIED`        | 403  |
-| Endpoint not configured                        | `COMMON_ACCESS_DENIED`        | 403  |
-| JWKS unreachable, config failure               | *(propagates as-is)*          | 500  |
-
 ## Authorization sequence
 ```mermaid
 sequenceDiagram
@@ -67,26 +60,48 @@ sequenceDiagram
   participant C as Client
   participant AG as API Gateway
   participant LA as Authorizer
-  participant PF as PingFederate
+  participant IdP as OIDC IdP
 
   C->>AG: Request + Bearer JWT
   AG->>LA: Invoke (REQUEST event)
 
-  alt Cache miss
-    LA->>PF: GET /.well-known/openid-configuration
-    PF-->>LA: issuer, jwks_uri
-    LA->>PF: GET /jwks
-    PF-->>LA: JWKS
-  end
+  note right of LA: Look up operation in permissions.yaml
 
-  note right of LA: Validate JWT (alg, kid, sig,<br/>iss, aud, exp/nbf) +<br/>check scopes vs permissions.yaml
+  alt Not configured
+    LA-->>AG: Deny policy
+    AG-->>C: 403
+  else Public (no scopes required)
+    LA-->>AG: Allow policy
+    AG->>C: Backend response
+  else Scopes required
+    note right of LA: Extract Bearer token
 
-  LA-->>AG: Policy (Allow/Deny) + context
+    alt No token
+      LA--xAG: throw "Unauthorized"
+      AG-->>C: 401
+    end
 
-  alt Allow
-    AG-->>C: Backend response
-  else Deny
-    AG-->>C: 401 / 403
+    alt JWKS cache miss
+      LA->>IdP: GET /jwks
+      IdP-->>LA: JWKS
+    end
+
+    note right of LA: Validate JWT<br/>(alg, sig, iss, sub, iat, exp)
+
+    alt Invalid token
+      LA--xAG: throw "Unauthorized"
+      AG-->>C: 401
+    end
+
+    note right of LA: Check token scopes ∩ required scopes
+
+    alt No intersection
+      LA-->>AG: Deny policy
+      AG-->>C: 403
+    else Intersection
+      LA-->>AG: Allow policy
+      AG->>C: Backend response
+    end
   end
 ```
 

@@ -2,10 +2,7 @@ package com.example.lambda.exception;
 
 import lombok.Getter;
 
-/**
- * Base exception for any authorizer-related failures.
- * Carries a standardized {@link ErrorCodeType} for structured logging and diagnostics.
- */
+/** Base exception for authorizer failures. Carries an ErrorCodeType for structured logging. */
 @Getter
 public abstract class AuthorizerException extends RuntimeException {
     private final ErrorCodeType errorCode;

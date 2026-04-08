@@ -7,9 +7,7 @@ import java.util.Map;
 
 @Slf4j
 
-/**
- * Utility class for loading and validating environment variables.
- */
+/** Loads and validates required/optional environment variables into a Config object. */
 public final class EnvironmentConfigLoader {
 
     private static final String S3_REGION_ENV_VAR = "APP_CONF_S3_REGION";
@@ -23,9 +21,7 @@ public final class EnvironmentConfigLoader {
 
     private EnvironmentConfigLoader() {}
 
-    /**
-     * Configuration values loaded from environment variables.
-     */
+    /** Validated configuration loaded from environment variables. */
     public static final class Config {
         private final String s3Region;
         private final String s3Bucket;
@@ -72,12 +68,7 @@ public final class EnvironmentConfigLoader {
         }
     }
 
-    /**
-     * Loads configuration from environment variables and validates required values.
-     *
-     * @return validated configuration
-     * @throws IllegalStateException if required environment variables are missing
-     */
+    /** Loads and validates configuration from environment variables. */
     public static Config loadConfig() {
         Map<String, String> env = System.getenv();
 
@@ -95,21 +86,15 @@ public final class EnvironmentConfigLoader {
         Duration s3Ttl = parseTtlSeconds(s3TtlSec);
 
         Config config = new Config(s3Region, configS3Bucket, s3Ttl, s3Endpoint, s3AccessKey, s3SecretKey);
-        LOG.info("Environment configuration loaded: region={}, bucket={}, ttl={}s, testMode={}",
+        LOG.info("Config loaded: region={}, bucket={}, ttl={}s, testMode={}",
                 s3Region, configS3Bucket, s3Ttl.toSeconds(), config.hasTestConfiguration());
         if (config.hasTestConfiguration()) {
-            LOG.warn("Test S3 configuration is active (custom endpoint: {}). Not intended for production.", s3Endpoint);
+            LOG.warn("Test S3 config active, endpoint={} — not for production", s3Endpoint);
         }
         return config;
     }
 
-    /**
-     * Parses TTL seconds from environment variable string.
-     *
-     * @param ttlSeconds the TTL seconds string
-     * @return Duration representing the TTL
-     * @throws IllegalStateException if TTL cannot be parsed
-     */
+    /** Parses a positive integer TTL from the raw env var string. */
     private static Duration parseTtlSeconds(String ttlSeconds) {
         try {
             long seconds = Long.parseLong(ttlSeconds);
@@ -124,13 +109,7 @@ public final class EnvironmentConfigLoader {
         }
     }
 
-    /**
-     * Validates that a required environment variable is present and not blank.
-     *
-     * @param varName the environment variable name
-     * @param value the environment variable value
-     * @throws IllegalStateException if validation fails
-     */
+    /** Throws if the given required env var is null or blank. */
     private static void validateRequiredEnvironmentVariable(String varName, String value) {
         if (value == null || value.trim().isBlank()) {
             throw new IllegalStateException(

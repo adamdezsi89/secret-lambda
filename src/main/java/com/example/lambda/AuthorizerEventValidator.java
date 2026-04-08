@@ -6,10 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * Utility class for validating API Gateway Custom Authorizer events
- * and extracting the Bearer token from the Authorization header.
- */
+/** Validates the API Gateway authorizer event and extracts the Bearer token. */
 @Slf4j
 public final class AuthorizerEventValidator {
 
@@ -17,46 +14,28 @@ public final class AuthorizerEventValidator {
 
     private AuthorizerEventValidator() {}
 
-    /**
-     * Validates the incoming API Gateway event.
-     * Ensures the event is non-null and has a supported type (REQUEST).
-     *
-     * @param event the authorizer event
-     * @throws MalformedEventException if the event is null, has no type, or has an unsupported type
-     */
+    /** Ensures the event is non-null and has type REQUEST. */
     public static void validateEvent(APIGatewayCustomAuthorizerEvent event) {
         if (event == null) {
-            LOG.error("Authorizer event is null");
-            throw new MalformedEventException("APIGatewayCustomAuthorizerEvent must not be null");
+            throw new MalformedEventException("Event is null");
         }
 
         String type = event.getType();
         if (type == null) {
-            LOG.error("Authorizer event has no 'type' field: {}", event);
-            throw new MalformedEventException("Authorizer event must have a 'type' field (TOKEN or REQUEST)");
+            throw new MalformedEventException("Event has no 'type' field");
         }
 
         if ("TOKEN".equalsIgnoreCase(type)) {
-            LOG.error("TOKEN type event received, but only REQUEST type is supported.");
-            throw new MalformedEventException("Only 'REQUEST' type authorizer events are supported. " +
-                "Please reconfigure the API Gateway Authorizer to use 'REQUEST' type instead of 'TOKEN' type.");
+            throw new MalformedEventException("TOKEN type is not supported, reconfigure API Gateway to use REQUEST type");
         }
 
         if (!"REQUEST".equalsIgnoreCase(type)) {
-            LOG.error("Unsupported authorizer event type: {}", type);
-            throw new MalformedEventException("Unsupported authorizer event type: '" + type + "'. Only 'REQUEST' is supported.");
+            throw new MalformedEventException("Unsupported event type: " + type);
         }
     }
 
-    /**
-     * Extracts the Bearer token from the Authorization header of a REQUEST event.
-     * Strips the "Bearer " prefix if present.
-     *
-     * @param event a validated REQUEST authorizer event
-     * @return an Optional containing the extracted token, or empty if no token found
-     */
+    /** Extracts the Bearer token from the Authorization header. Strips the "Bearer " prefix. */
     public static Optional<String> extractBearerToken(APIGatewayCustomAuthorizerEvent event) {
-        LOG.debug("Extracting token from REQUEST event.");
         String token = null;
 
         Map<String, String> headers = event.getHeaders();
@@ -67,15 +46,11 @@ public final class AuthorizerEventValidator {
             }
         }
 
-        if (token != null) {
-            if (token.startsWith(BEARER_PREFIX)) {
-                LOG.trace("Found 'Bearer ' prefix, stripping it.");
-                token = token.substring(BEARER_PREFIX.length());
-            }
-            LOG.debug("Successfully extracted token from REQUEST event.");
-        } else {
-            LOG.info("No authorization token found in REQUEST event.");
+        if (token != null && token.startsWith(BEARER_PREFIX)) {
+            token = token.substring(BEARER_PREFIX.length());
         }
+
+        LOG.debug("Bearer token {}", token != null ? "found" : "absent");
 
         return Optional.ofNullable(token);
     }

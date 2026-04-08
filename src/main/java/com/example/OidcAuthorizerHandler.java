@@ -48,11 +48,7 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
     private final ConfigurationLoader configurationLoader;
     private final Map<String, ConfigurableJWTProcessor<SecurityContext>> jwtProcessors;
 
-    /**
-     * Initialize the SDK client outside of the handler method so that it can be reused for subsequent invocations.
-     * It is initialized when the class is loaded.
-     * Consider invoking a simple api here to pre-warm up the application, eg: dynamodb#listTables
-     */
+    /** Cold start: loads config from S3, builds JWT processors. Fails fast if anything is wrong. */
     public OidcAuthorizerHandler() {
         config = EnvironmentConfigLoader.loadConfig();
         s3Client = S3ClientBuilder.create(config);
@@ -66,15 +62,15 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
         // Warm up S3 file cache and build JWT infrastructure from the loaded issuers config.
         try {
             AcceptedIssuers issuersConfig = configurationLoader.getIssuersConfig();
-            LOG.info("Loaded issuers configuration: {} issuer(s)", issuersConfig.getAcceptedIssuers().size());
+            LOG.info("Loaded {} issuer(s)", issuersConfig.getAcceptedIssuers().size());
 
             configurationLoader.getPermissionsConfig();
-            LOG.info("Loaded permissions configuration.");
+            LOG.info("Loaded permissions config");
 
             List<AcceptedIssuers.Issuer> issuers = issuersConfig.getAcceptedIssuers();
             Map<String, JWKSource<SecurityContext>> jwkSources = JwkSourceFactory.create(issuers);
             jwtProcessors = JwtProcessorFactory.create(issuers, jwkSources);
-            LOG.info("Built JWT processors for {} issuer(s)", jwtProcessors.size());
+            LOG.info("JWT processors ready for {} issuer(s)", jwtProcessors.size());
         } catch (IOException e) {
             LOG.error("Cold start failed: {}", e.getMessage(), e);
             throw new RuntimeException("Cold start failed: " + e.getMessage(), e);
@@ -101,7 +97,7 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
 
             // Public → allow, skip token validation
             if (requiredScopes.get().isEmpty()) {
-                LOG.info("Operation [{} {}] is public. Allowing without token validation.", httpMethod, resource);
+                LOG.info("Public endpoint [{} {}], allowing without token", httpMethod, resource);
                 return RestApiGwAuthorizerResponse.builder("anonymous")
                     .allowMethodArn(event.getMethodArn())
                     .build();

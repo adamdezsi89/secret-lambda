@@ -22,37 +22,16 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Builds a per-issuer map of configured {@link ConfigurableJWTProcessor} instances from the
- * runtime {@link AcceptedIssuers} configuration and pre-built JWK sources.
+ * Builds a per-issuer map of JWT processors.
  *
- * <p>Each processor is independently configured with:
- * <ul>
- *   <li><b>Type verification</b> — accepts {@code "at+jwt"} (RFC 9068 access tokens),
- *       {@code "JWT"} (legacy plain type), and tokens with no {@code typ} header (common in
- *       enterprise IdPs such as PingFederate). Cross-JWT type confusion attacks are therefore
- *       prevented without breaking real-world compatibility.</li>
- *   <li><b>Algorithm restriction</b> — only the algorithms declared in
- *       {@link AcceptedIssuers.Issuer#getAcceptedAlgorithms()} are accepted; any other algorithm
- *       in the JWT header is rejected before key selection.</li>
- *   <li><b>Key selection</b> — {@link JWSAlgorithmFamilyJWSKeySelector} selects the correct
- *       public key from the issuer's JWK set based on algorithm family (RSA, EC, OKP), with
- *       optional {@code kid} header hint narrowing.</li>
- *   <li><b>Claims verification</b> — exact {@code iss} match; required presence of {@code sub}
- *       and {@code iat}; {@code exp} is always enforced by Nimbus regardless.</li>
- * </ul>
- *
- * <p>Processors are stateless and thread-safe once constructed; share them across Lambda
- * invocations for the lifetime of the container.
+ * Each processor verifies: type header (at+jwt, JWT, absent), algorithm restriction,
+ * signature via JWK set, and claims (exact iss, required sub + iat, automatic exp).
+ * Thread-safe and stateless once built — shared across Lambda invocations.
  */
 @Slf4j
 public final class JwtProcessorFactory {
 
-    /**
-     * Accepted {@code typ} header values.
-     *
-     * <p>{@code null} in this set tells Nimbus to also accept tokens where the {@code typ} header
-     * is absent — required for PingFederate and many other enterprise IdPs that omit it.
-     */
+    // null = absent typ header, needed for PingFederate and other IdPs that omit it.
     private static final Set<JOSEObjectType> ACCEPTED_TYPES;
     static {
         Set<JOSEObjectType> types = new HashSet<>();
@@ -62,24 +41,12 @@ public final class JwtProcessorFactory {
         ACCEPTED_TYPES = Collections.unmodifiableSet(types);
     }
 
-    /**
-     * Claims whose <em>presence</em> is required in every token, beyond the automatic
-     * {@code exp} check that Nimbus always performs.
-     */
+    // Beyond the automatic exp check that Nimbus always performs.
     private static final Set<String> REQUIRED_CLAIMS = Set.of("sub", "iat");
 
     private JwtProcessorFactory() {}
 
-    /**
-     * Creates one {@link ConfigurableJWTProcessor} per accepted issuer.
-     *
-     * @param issuers    accepted issuers from the runtime configuration
-     * @param jwkSources per-issuer JWK sources keyed by {@code iss}; produced by
-     *                   {@link JwkSourceFactory#create}
-     * @return unmodifiable map from {@code iss} claim value to its processor
-     * @throws IllegalArgumentException if an issuer has no corresponding JWK source or
-     *                                  an empty / unrecognised algorithm list
-     */
+    /** Creates one JWT processor per accepted issuer, keyed by iss claim value. */
     public static Map<String, ConfigurableJWTProcessor<SecurityContext>> create(
             List<AcceptedIssuers.Issuer> issuers,
             Map<String, JWKSource<SecurityContext>> jwkSources) {
@@ -130,11 +97,6 @@ public final class JwtProcessorFactory {
         return processor;
     }
 
-    /**
-     * Parses algorithm name strings to {@link JWSAlgorithm} objects.
-     * Uses {@link JWSAlgorithm#parse} which resolves registered names (RS256, ES256, …)
-     * as well as non-standard ones, so no algorithm name is silently dropped.
-     */
     private static JWSAlgorithm.Family parseAlgorithms(List<String> names, String iss) {
         if (names == null || names.isEmpty()) {
             throw new IllegalArgumentException(

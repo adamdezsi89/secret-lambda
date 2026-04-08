@@ -16,19 +16,12 @@ import java.time.Instant;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * TTL-based S3 file cache with ETag conditional fetching and per-key locking via
- * {@link ConcurrentHashMap#compute}.
+ * TTL-based S3 file cache with ETag conditional fetching.
  *
- * <p>Reads are served lock-free via {@link ConcurrentHashMap#get} on the hot path. On TTL expiry,
- * {@code compute()} provides per-key mutual exclusion — preventing thundering-herd duplicate S3
- * calls without a separate lock map and its associated memory overhead. A double-check inside the
- * compute lambda ensures threads that waited for the key lock reuse the result fetched by the first
- * thread rather than issuing their own S3 request.
- *
- * <p>On expiry, an ETag-driven conditional GET ({@code If-None-Match}) is issued. A 304 response
- * resets the TTL without retransferring the body. S3 errors always propagate as {@link IOException}
- * — stale-on-error is intentionally omitted because serving an outdated JWKS after key rotation
- * would silently break validation of legitimately issued tokens.
+ * Hot path: lock-free ConcurrentHashMap.get(). On TTL expiry, compute() provides per-key
+ * mutual exclusion with a double-check to avoid duplicate S3 calls. ETag-driven conditional
+ * GET resets TTL without re-downloading on 304. Stale-on-error is intentionally omitted —
+ * serving outdated JWKS after key rotation would break token validation.
  */
 @Slf4j
 public final class S3FileCache extends AbstractS3FileCache {
@@ -49,18 +42,18 @@ public final class S3FileCache extends AbstractS3FileCache {
         // Hot path: lock-free read — covers the vast majority of calls.
         CachedFile entry = cache.get(fileName);
         if (entry != null && !entry.isExpired(clock)) {
-            LOG.debug("Cache hit for file: {}", fileName);
+            LOG.debug("Cache hit for {}", fileName);
             return entry.content();
         }
 
         // Cold path: compute() holds a per-key lock for the duration of the S3 fetch.
         // UncheckedIOException tunnels the checked IOException out of the lambda.
-        LOG.info("Cache miss or expiry for file: {}. Refreshing...", fileName);
+        LOG.info("Cache miss/expiry for {}, refreshing", fileName);
         try {
             return cache.compute(fileName, (key, existing) -> {
                 // Double-check: a concurrent thread may have refreshed while we waited.
                 if (existing != null && !existing.isExpired(clock)) {
-                    LOG.debug("Double-check success for file: {}. Reusing content refreshed by another thread.", fileName);
+                    LOG.debug("Double-check hit for {}, reusing", fileName);
                     return existing;
                 }
                 try {
@@ -80,10 +73,10 @@ public final class S3FileCache extends AbstractS3FileCache {
                 .key(fileName);
 
         if (existing != null && existing.eTag() != null) {
-            LOG.debug("Issuing conditional GET for {} [If-None-Match: {}]", fileName, existing.eTag());
+            LOG.debug("Conditional GET for {}, etag={}", fileName, existing.eTag());
             request.ifNoneMatch(existing.eTag());
         } else {
-            LOG.debug("Issuing full GET for {} (no cached version found)", fileName);
+            LOG.debug("Full GET for {}", fileName);
         }
 
         try (ResponseInputStream<GetObjectResponse> stream = s3Client.getObject(request.build())) {
@@ -91,16 +84,15 @@ public final class S3FileCache extends AbstractS3FileCache {
             String content = new String(bytes, StandardCharsets.UTF_8);
             GetObjectResponse meta = stream.response();
 
-            LOG.info("Successfully fetched new content for {} from S3 [ETag: {}, Size: {} bytes]",
-                    fileName, meta.eTag(), bytes.length);
+            LOG.info("Fetched {} from S3, etag={}, size={}", fileName, meta.eTag(), bytes.length);
 
             return new CachedFile(content, meta.eTag(), clock.instant().plus(ttl));
         } catch (S3Exception e) {
             if (e.statusCode() == 304 && existing != null) {
-                LOG.info("File {} not modified in S3 (304). Resetting TTL for another {}.", fileName, ttl);
+                LOG.info("Not modified (304) for {}, resetting TTL", fileName);
                 return new CachedFile(existing.content(), existing.eTag(), clock.instant().plus(ttl));
             }
-            LOG.error("S3 fetch failed for bucket={} key={} [HTTP {}]: {}",
+            LOG.error("S3 fetch failed, bucket={}, key={}, status={}: {}",
                     bucketName, fileName, e.statusCode(), e.getMessage());
             throw new IOException("S3 fetch failed [bucket=" + bucketName + ", key=" + fileName + "]", e);
         }

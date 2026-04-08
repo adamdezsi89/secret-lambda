@@ -10,38 +10,24 @@ import java.util.Objects;
 
 @Slf4j
 
-/**
- * Utility class for reading issuers configuration from JSON input streams.
- */
+/** Parses issuers.json into an AcceptedIssuers model. */
 public final class IssuersReader {
     
     private final ObjectMapper objectMapper;
     
-    /**
-     * Creates an IssuersReader with a custom ObjectMapper.
-     * 
-     * @param objectMapper the ObjectMapper to use for JSON parsing
-     */
     public IssuersReader(ObjectMapper objectMapper) {
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
     }
     
-    /**
-     * Reads issuers configuration from an input stream containing JSON structure.
-     * 
-     * @param inputStream input stream containing issuers.json content
-     * @return AcceptedIssuers model instance
-     * @throws IOException if the input stream cannot be read or JSON is invalid
-     */
     public AcceptedIssuers read(InputStream inputStream) throws IOException {
         Objects.requireNonNull(inputStream, "inputStream");
         
         try {
             AcceptedIssuers result = objectMapper.readValue(inputStream, AcceptedIssuers.class);
-            LOG.debug("Parsed issuers configuration: {} issuer(s)", result.getAcceptedIssuers().size());
+            LOG.debug("Parsed {} issuer(s)", result.getAcceptedIssuers().size());
             return result;
         } catch (Exception e) {
-            LOG.error("Failed to parse issuers configuration", e);
+            LOG.error("Failed to parse issuers config", e);
             throw new IOException("Failed to parse issuers configuration from input stream", e);
         }
     }
