@@ -23,7 +23,8 @@ public final class PermissionsReader {
         Objects.requireNonNull(input, "input");
         try {
             Permissions result = yamlMapper.readValue(input, Permissions.class);
-            LOG.debug("Parsed {} path(s)", result.paths().size());
+            result.validate();
+            LOG.debug("Parsed and validated {} path(s)", result.paths().size());
             return result;
         } catch (Exception e) {
             LOG.error("Failed to parse permissions config", e);

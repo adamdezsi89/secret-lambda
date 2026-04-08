@@ -3,10 +3,13 @@ package com.example.config.model;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import lombok.extern.slf4j.Slf4j;
+
 import java.util.List;
 import java.util.Objects;
 
 /** Deserialized issuers.json — list of accepted OIDC issuers. */
+@Slf4j
 public final class AcceptedIssuers {
     
     private final List<Issuer> acceptedIssuers;
@@ -18,6 +21,25 @@ public final class AcceptedIssuers {
     
     public List<Issuer> getAcceptedIssuers() {
         return acceptedIssuers;
+    }
+
+    /** Validates the config after loading. Throws on fatal issues, warns on suspicious config. */
+    public void validate() {
+        if (acceptedIssuers.isEmpty()) {
+            throw new IllegalStateException("acceptedIssuers is empty — no issuers configured");
+        }
+        for (Issuer issuer : acceptedIssuers) {
+            if (issuer.iss.isBlank()) {
+                throw new IllegalStateException("Issuer has blank 'iss' value");
+            }
+            if (issuer.jwksUrl.isBlank()) {
+                throw new IllegalStateException("Issuer '%s' has blank jwksUrl".formatted(issuer.iss));
+            }
+            if (issuer.acceptedAlgorithms.isEmpty()) {
+                throw new IllegalStateException("Issuer '%s' has no acceptedAlgorithms".formatted(issuer.iss));
+            }
+            LOG.debug("Issuer validated: iss={}, jwksUrl={}, algorithms={}", issuer.iss, issuer.jwksUrl, issuer.acceptedAlgorithms);
+        }
     }
     
     /** Single OIDC issuer: iss claim value, JWKS URL, and accepted signing algorithms. */

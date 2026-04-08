@@ -24,7 +24,8 @@ public final class IssuersReader {
         
         try {
             AcceptedIssuers result = objectMapper.readValue(inputStream, AcceptedIssuers.class);
-            LOG.debug("Parsed {} issuer(s)", result.getAcceptedIssuers().size());
+            result.validate();
+            LOG.debug("Parsed and validated {} issuer(s)", result.getAcceptedIssuers().size());
             return result;
         } catch (Exception e) {
             LOG.error("Failed to parse issuers config", e);
