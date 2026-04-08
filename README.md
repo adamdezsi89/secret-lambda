@@ -3,6 +3,7 @@
   - It can authorize incoming HTTP requests on an AWS API gateway (2015 REST type)
   - It supports OAuth2 OpenID Connect (OIDC) authentication protocol
   - It validates JWT access tokens issued by an OIDC-compliant issuer
+  - It enforces scope-based access control per endpoint
 
 ## Authorization outcomes
 | Situation                                                                                    | Status  | Mechanism                                |
@@ -13,6 +14,21 @@
 | Operation is in `permissions.yaml`, requires scopes, but invalid token                       | 401     | `throw "Unauthorized"`                   |
 | Operation is in `permissions.yaml`, requires scopes, valid token, but scopes don't intersect | 403     | `Deny` policy                            |
 | Operation is in `permissions.yaml`, requires scopes, valid token, scopes intersect           | 200     | `Allow` policy                           |
+
+## Authorization flow
+  1. Extract path and HTTP method from the incoming REQUEST event
+  2. Look up the operation in `permissions.yaml`
+     - **Not found** &rarr; Deny (403)
+     - **Public** (no scopes required) &rarr; Allow (200), skip token validation entirely
+     - **Scopes required** &rarr; continue
+  3. Extract Bearer token from the `Authorization` header
+     - **Missing** &rarr; throw `"Unauthorized"` (401)
+  4. Validate the JWT (signature, algorithm, issuer, expiry, required claims)
+     - **Invalid** &rarr; throw `"Unauthorized"` (401)
+  5. Extract scopes from the validated token claims
+  6. Check if the token scopes intersect with the required scopes (OR logic)
+     - **No intersection** &rarr; Deny (403)
+     - **Intersection** &rarr; Allow (200)
 
 ## Authorization sequence
 ```mermaid
@@ -56,6 +72,28 @@ sequenceDiagram
   - the event type passed by the API gateway must be `REQUEST`
   - `TOKEN` event type is not supported because it lacks essential information
   - the lambda returns an IamPolicyResponse JSON structure to the API gateway
+  - **Limitation:** Gateway Response templates only support `$context.error.*` variables, not `$context.authorizer.*`. This means the lambda cannot control 401/403 response bodies — clients receive generic API Gateway error messages regardless of the specific cause:
+    - 401: `{"message": "Unauthorized"}`
+    - 403: `{"message": "User is not authorized to access this resource with an explicit deny"}`
+    - The exact reason for a 401 or 403 must be found in the authorizer's CloudWatch logs
+
+Example of an API gateway configuration file:
+```
+components:
+  securitySchemes:
+    lambdaAuthorizer:
+      type: apiKey
+      name: Authorization
+      in: header
+      x-amazon-apigateway-authtype: custom
+      x-amazon-apigateway-authorizer:
+        type: request
+        authorizerResultTtlInSeconds: 0
+        # When "type: request" and "authorizerResultTtlInSeconds: 0", "identitySource" can be entirely omitted to make the API-GW call the authorizer lambda each time, even when Authorization HTTP header is not present
+        # identitySource: method.request.header.Authorization
+        authorizerUri: "arn:aws:apigateway:eu-central-1:lambda:path/2015-03-31/functions/arn:aws:lambda:eu-central-1:${ACCOUNT_ID}:function:${AUTHORIZER_LAMBDA_FUNCTION_NAME}:${AUTHORIZER_LAMBDA_FUNCTION_ALIAS_NAME}/invocations"
+        authorizerCredentials: "${AUTHORIZER_LAMBDA_INVOCATION_ROLE_ARN}"
+```
 
 # Testing and/or running locally
 
