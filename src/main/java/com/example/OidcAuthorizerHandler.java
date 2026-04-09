@@ -13,6 +13,7 @@ import com.example.json.ObjectMapperBuilder;
 import com.example.jwt.JwkSourceFactory;
 import com.example.jwt.JwtProcessorFactory;
 import com.example.jwt.TokenValidator;
+import com.example.logging.LoggingContextConfigurer;
 import com.example.lambda.exception.AccessDeniedException;
 import com.example.lambda.exception.ErrorCodeType;
 import com.example.lambda.exception.UnauthorizedException;
@@ -47,6 +48,7 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
     private final PermissionsReader permissionsReader;
     private final ConfigurationLoader configurationLoader;
     private final Map<String, ConfigurableJWTProcessor<SecurityContext>> jwtProcessors;
+    private boolean coldStart = true;
 
     /** Cold start: loads config from S3, builds JWT processors. Fails fast if anything is wrong. */
     public OidcAuthorizerHandler() {
@@ -79,6 +81,12 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
 
     @Override
     public RestApiGwAuthorizerResponse handleRequest(APIGatewayCustomAuthorizerEvent event, Context context) {
+        boolean isColdStart = coldStart;
+        if (coldStart) {
+            coldStart = false;
+        }
+        LoggingContextConfigurer.setRequestContext(isColdStart, event, context);
+
         try {
             AuthorizerEventValidator.validateEvent(event);
 
@@ -112,6 +120,7 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
 
             // Validate token (signature, algorithm, issuer, expiry, required claims)
             JWTClaimsSet claims = TokenValidator.validate(token.get(), jwtProcessors);
+            LoggingContextConfigurer.setJwtContext(claims);
 
             // Extract scopes and check intersection (OR logic)
             List<String> tokenScopes = TokenValidator.extractScopes(claims);
@@ -139,6 +148,8 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
         } catch (Exception e) {
             LOG.error("Internal error: {}", e.getMessage(), e);
             throw new RuntimeException(e);
+        } finally {
+            LoggingContextConfigurer.clear();
         }
     }
 }
