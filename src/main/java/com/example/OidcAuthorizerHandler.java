@@ -39,6 +39,11 @@ import java.util.Optional;
 @Slf4j
 
 public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAuthorizerEvent, RestApiGwAuthorizerResponse> {
+
+    /** Exact string API Gateway interprets as a 401 response. */
+    private static final String UNAUTHORIZED_MESSAGE = "Unauthorized";
+    private static final String ANONYMOUS_PRINCIPAL = "anonymous";
+
     private final EnvironmentConfigLoader.Config config;
     private final S3Client s3Client;
     private final FileCache fileCache;
@@ -106,7 +111,7 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
             // Public → allow, skip token validation
             if (requiredScopes.get().isEmpty()) {
                 LOG.info("Public endpoint [{} {}], allowing without token", httpMethod, resource);
-                return RestApiGwAuthorizerResponse.builder("anonymous")
+                return RestApiGwAuthorizerResponse.builder(ANONYMOUS_PRINCIPAL)
                     .allowMethodArn(event.getMethodArn())
                     .build();
             }
@@ -138,10 +143,10 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
 
         } catch (UnauthorizedException e) {
             LOG.warn("Authentication failed [{}]: {}", e.getErrorCode(), e.getMessage());
-            throw new RuntimeException("Unauthorized");
+            throw new RuntimeException(UNAUTHORIZED_MESSAGE);
         } catch (AccessDeniedException e) {
             LOG.warn("Access denied [{}]: {}", e.getErrorCode(), e.getMessage());
-            return RestApiGwAuthorizerResponse.builder("anonymous").build();
+            return RestApiGwAuthorizerResponse.builder(ANONYMOUS_PRINCIPAL).build();
         } catch (RuntimeException e) {
             LOG.error("Internal error: {}", e.getMessage(), e);
             throw e;

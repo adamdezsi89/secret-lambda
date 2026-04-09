@@ -10,6 +10,9 @@ import java.util.Optional;
 @Slf4j
 public final class AuthorizerEventValidator {
 
+    private static final String EVENT_TYPE_REQUEST = "REQUEST";
+    private static final String EVENT_TYPE_TOKEN = "TOKEN";
+    private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
 
     private AuthorizerEventValidator() {}
@@ -25,11 +28,11 @@ public final class AuthorizerEventValidator {
             throw new MalformedEventException("Event has no 'type' field");
         }
 
-        if ("TOKEN".equalsIgnoreCase(type)) {
+        if (EVENT_TYPE_TOKEN.equalsIgnoreCase(type)) {
             throw new MalformedEventException("TOKEN type is not supported, reconfigure API Gateway to use REQUEST type");
         }
 
-        if (!"REQUEST".equalsIgnoreCase(type)) {
+        if (!EVENT_TYPE_REQUEST.equalsIgnoreCase(type)) {
             throw new MalformedEventException("Unsupported event type: " + type);
         }
     }
@@ -40,9 +43,9 @@ public final class AuthorizerEventValidator {
 
         Map<String, String> headers = event.getHeaders();
         if (headers != null) {
-            token = headers.get("Authorization");
+            token = headers.get(AUTHORIZATION_HEADER);
             if (token == null) {
-                token = headers.get("authorization");
+                token = headers.get(AUTHORIZATION_HEADER.toLowerCase());
             }
         }
 

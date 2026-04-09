@@ -117,15 +117,25 @@ sequenceDiagram
 | `APP_CONF_S3_BUCKET`  | String | S3 bucket containing `issuers.json` and `permissions.yaml` |
 | `APP_CONF_S3_TTL_SEC` | Long   | Cache TTL in seconds (must be > 0)                         |
 
+### Optional (logging context)
+
+Static labels added to every log line via SLF4J MDC. Useful for filtering and routing in centralized logging.
+
+| Variable                                  | MDC key          | Description              |
+|-------------------------------------------|------------------|--------------------------|
+| `APP_CONF_LOGGINGCONTEXT_BUSINESS_DOMAIN` | `businessDomain` | Business domain label    |
+| `APP_CONF_LOGGINGCONTEXT_COMPONENT_TYPE`  | `componentType`  | Component type label     |
+| `APP_CONF_LOGGINGCONTEXT_COMPONENT_NAME`  | `componentName`  | Component name label     |
+
 ### Optional (test mode)
 
 Setting any of these activates test mode, which uses static credentials and a custom S3 endpoint (e.g. MinIO) instead of the AWS default credentials chain.
 
-| Variable | Description |
-|---|---|
-| `APP_TEST_CONF_S3_ENDPOINT` | Custom S3-compatible endpoint (e.g. `http://127.0.0.1:9000`) |
-| `APP_TEST_CONF_S3_ACCESS_KEY` | Access key for the custom endpoint |
-| `APP_TEST_CONF_S3_SECRET_KEY` | Secret key for the custom endpoint |
+| Variable                      | Description                                                  |
+|-------------------------------|--------------------------------------------------------------|
+| `APP_TEST_CONF_S3_ENDPOINT`   | Custom S3-compatible endpoint (e.g. `http://127.0.0.1:9000`) |
+| `APP_TEST_CONF_S3_ACCESS_KEY` | Access key for the custom endpoint                           |
+| `APP_TEST_CONF_S3_SECRET_KEY` | Secret key for the custom endpoint                           |
 
 ## S3 configuration files
 
@@ -193,6 +203,26 @@ If any step fails, the Lambda does not start — it will not accept requests in 
 ## Request time
   - `permissions.yaml` is re-read from cache per request (picks up TTL refreshes)
   - JWT processors built at cold start are reused — changes to `issuers.json` require a new cold start to take effect
+
+## Structured logging (SLF4J MDC)
+
+Every log line emitted during a request carries the following MDC fields, populated by `LoggingContextConfigurer`. Fields are set in two phases: request context (before any business logic) and JWT context (after token validation). MDC is cleared in a `finally` block at the end of each invocation.
+
+| MDC key            | Source                                             | Description                                   |
+|--------------------|----------------------------------------------------|-----------------------------------------------|
+| `isColdStart`      | Handler cold start flag                            | `true` on first invocation, `false` after     |
+| `functionName`     | `Context.getFunctionName()`                        | Lambda function name                          |
+| `functionVersion`  | `Context.getFunctionVersion()`                     | Lambda function version                       |
+| `X-Request-ID`     | Request header (case-insensitive)                  | RICE request tracing ID                       |
+| `X-Correlation-ID` | Request header (case-insensitive)                  | RICE correlation ID for cross-service tracing |
+| `jwtIss`           | JWT `iss` claim                                    | Token issuer                                  |
+| `jwtSub`           | JWT `sub` claim                                    | Token subject (user/service identity)         |
+| `jwtClientId`      | JWT `client_id` claim                              | OAuth client ID                               |
+| `businessDomain`   | Env var `APP_CONF_LOGGINGCONTEXT_BUSINESS_DOMAIN`  | Static business domain label                  |
+| `componentType`    | Env var `APP_CONF_LOGGINGCONTEXT_COMPONENT_TYPE`   | Static component type label                   |
+| `componentName`    | Env var `APP_CONF_LOGGINGCONTEXT_COMPONENT_NAME`   | Static component name label                   |
+
+JWT fields (`jwtIss`, `jwtSub`, `jwtClientId`) are only present when the request reaches token validation — they are absent for public endpoints or when the request fails before token parsing.
 
 ## Integration with the API gateway
   - configure the API gateway to make every request hit the lambda

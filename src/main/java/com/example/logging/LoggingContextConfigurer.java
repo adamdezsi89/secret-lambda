@@ -22,9 +22,11 @@ public final class LoggingContextConfigurer {
     public static final String LOG_FIELD_COMPONENT_TYPE = "componentType";
     public static final String LOG_FIELD_COMPONENT_NAME = "componentName";
 
-    private static final String ENV_BUSINESS_DOMAIN = "RICELAMBDA_LOGCONTEXT_BUSINESSDOMAIN";
-    private static final String ENV_COMPONENT_TYPE = "RICELAMBDA_LOGCONTEXT_COMPONENT_TYPE";
-    private static final String ENV_COMPONENT_NAME = "RICELAMBDA_LOGCONTEXT_COMPONENT_NAME";
+    private static final String JWT_CLAIM_CLIENT_ID = "client_id";
+
+    private static final String ENV_BUSINESS_DOMAIN = "APP_CONF_LOGGINGCONTEXT_BUSINESS_DOMAIN";
+    private static final String ENV_COMPONENT_TYPE = "APP_CONF_LOGGINGCONTEXT_COMPONENT_TYPE";
+    private static final String ENV_COMPONENT_NAME = "APP_CONF_LOGGINGCONTEXT_COMPONENT_NAME";
 
     private LoggingContextConfigurer() {}
 
@@ -60,7 +62,7 @@ public final class LoggingContextConfigurer {
         putIfNotNull(LOG_FIELD_JWT_CLAIM_ISSUER, claims.getIssuer());
         putIfNotNull(LOG_FIELD_JWT_CLAIM_SUBJECT, claims.getSubject());
 
-        Object clientId = claims.getClaim("client_id");
+        Object clientId = claims.getClaim(JWT_CLAIM_CLIENT_ID);
         if (clientId != null) {
             MDC.put(LOG_FIELD_JWT_CLAIM_CLIENT_ID, clientId.toString());
         }

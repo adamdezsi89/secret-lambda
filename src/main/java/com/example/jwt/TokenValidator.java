@@ -21,6 +21,9 @@ import java.util.Map;
 @Slf4j
 public final class TokenValidator {
 
+    private static final String SCOPE_CLAIM = "scope";
+    private static final String EXPIRED_INDICATOR = "Expired";
+
     private TokenValidator() {}
 
     /**
@@ -68,7 +71,7 @@ public final class TokenValidator {
             return claims;
         } catch (BadJOSEException e) {
             String message = e.getMessage();
-            if (message != null && message.contains("Expired")) {
+            if (message != null && message.contains(EXPIRED_INDICATOR)) {
                 throw new UnauthorizedException(ErrorCodeType.COMMON_EXPIRED_ACCESS_TOKEN,
                     "Token expired: " + message);
             }
@@ -79,7 +82,7 @@ public final class TokenValidator {
 
     /** Extracts scopes from the "scope" claim (space-delimited string). */
     public static List<String> extractScopes(JWTClaimsSet claims) {
-        Object scopeValue = claims.getClaim("scope");
+        Object scopeValue = claims.getClaim(SCOPE_CLAIM);
         if (scopeValue == null) {
             return List.of();
         }
