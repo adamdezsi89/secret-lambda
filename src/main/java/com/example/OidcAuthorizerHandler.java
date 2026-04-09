@@ -95,6 +95,16 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
         try {
             AuthorizerEventValidator.validateEvent(event);
 
+            // Extract bearer token early for logging context (best-effort, no validation)
+            Optional<String> token = AuthorizerEventValidator.extractBearerToken(event);
+            token.ifPresent(t -> {
+                int lastDot = t.lastIndexOf('.');
+                if (lastDot > 0) {
+                    LOG.debug("Bearer token (signature stripped): {}", t.substring(0, lastDot));
+                }
+                LoggingContextConfigurer.setJwtContext(TokenValidator.parseClaimsUnverified(t));
+            });
+
             String resource = event.getResource();
             String httpMethod = event.getHttpMethod();
             LOG.info("Received request: [{} {}]", httpMethod, resource);
@@ -110,14 +120,18 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
 
             // Public → allow, skip token validation
             if (requiredScopes.get().isEmpty()) {
-                LOG.info("Public endpoint [{} {}], allowing without token", httpMethod, resource);
-                return RestApiGwAuthorizerResponse.builder(ANONYMOUS_PRINCIPAL)
+                String principalId = token
+                        .map(TokenValidator::parseClaimsUnverified)
+                        .map(JWTClaimsSet::getSubject)
+                        .orElse(ANONYMOUS_PRINCIPAL);
+                LOG.info("Public endpoint [{} {}], allowing without token validation, principalId={}",
+                        httpMethod, resource, principalId);
+                return RestApiGwAuthorizerResponse.builder(principalId)
                     .allowMethodArn(event.getMethodArn())
                     .build();
             }
 
-            // Scopes required → extract token
-            Optional<String> token = AuthorizerEventValidator.extractBearerToken(event);
+            // Scopes required → token must be present
             if (token.isEmpty()) {
                 throw new UnauthorizedException(ErrorCodeType.COMMON_MISSING_CREDENTIALS,
                     "No Bearer token in Authorization header for operation [%s %s]".formatted(httpMethod, resource));
@@ -125,7 +139,6 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
 
             // Validate token (signature, algorithm, issuer, expiry, required claims)
             JWTClaimsSet claims = TokenValidator.validate(token.get(), jwtProcessors);
-            LoggingContextConfigurer.setJwtContext(claims);
 
             // Extract scopes and check intersection (OR logic)
             List<String> tokenScopes = TokenValidator.extractScopes(claims);

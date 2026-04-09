@@ -80,6 +80,16 @@ public final class TokenValidator {
         }
     }
 
+    /** Parses JWT claims without signature validation. Returns null on malformed tokens. */
+    public static JWTClaimsSet parseClaimsUnverified(String rawToken) {
+        try {
+            return SignedJWT.parse(rawToken).getJWTClaimsSet();
+        } catch (ParseException e) {
+            LOG.debug("Cannot parse JWT claims for logging: {}", e.getMessage());
+            return null;
+        }
+    }
+
     /** Extracts scopes from the "scope" claim (space-delimited string). */
     public static List<String> extractScopes(JWTClaimsSet claims) {
         Object scopeValue = claims.getClaim(SCOPE_CLAIM);

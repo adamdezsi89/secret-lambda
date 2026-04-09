@@ -11,7 +11,7 @@ The lambda returns an IAM policy that is **deny-all by default** — only explic
 | Situation                                                                                    | Status | Error code                    | Mechanism                                |
 |----------------------------------------------------------------------------------------------|--------|-------------------------------|------------------------------------------|
 | Operation NOT in `permissions.yaml`                                                          | 403    | `COMMON_ACCESS_DENIED`        | `Deny` policy                            |
-| Operation is in `permissions.yaml`, but requires no scopes (public)                          | 200    |                               | `Allow` policy, token ignored if present |
+| Operation is in `permissions.yaml`, but requires no scopes (public)                          | 200    |                               | `Allow` policy, no token validation; `sub` claim used as principalId if token present |
 | Operation is in `permissions.yaml`, requires scopes, but no token                            | 401    | `COMMON_MISSING_CREDENTIALS`  | `throw "Unauthorized"`                   |
 | Operation is in `permissions.yaml`, requires scopes, but malformed token                     | 401    | `COMMON_INVALID_CREDENTIALS`  | `throw "Unauthorized"`                   |
 | Operation is in `permissions.yaml`, requires scopes, but unknown issuer                      | 401    | `COMMON_INVALID_ISSUER`       | `throw "Unauthorized"`                   |
@@ -22,17 +22,19 @@ The lambda returns an IAM policy that is **deny-all by default** — only explic
 | Internal error (S3 unreachable, config parse failure, unexpected bug)                        | 500    |                               | Exception propagates to Lambda runtime   |
 
 ## Authorization flow
-  1. Extract path and HTTP method from the incoming REQUEST event
-  2. Look up the operation in `permissions.yaml`
+  1. Validate the REQUEST event
+  2. Extract Bearer token from the `Authorization` header (if present) and populate MDC with unverified JWT claims for logging
+  3. Extract path and HTTP method from the event
+  4. Look up the operation in `permissions.yaml`
      - **Not found** &rarr; Deny (403)
-     - **Public** (no scopes required) &rarr; Allow (200), skip token validation entirely
+     - **Public** (no scopes required) &rarr; Allow (200), skip token validation; use JWT `sub` as principalId if token present, otherwise `anonymous`
      - **Scopes required** &rarr; continue
-  3. Extract Bearer token from the `Authorization` header
+  5. Require Bearer token
      - **Missing** &rarr; throw `"Unauthorized"` (401)
-  4. Validate the JWT (signature, algorithm, issuer, expiry, required claims)
+  6. Validate the JWT (signature, algorithm, issuer, expiry, required claims)
      - **Invalid** &rarr; throw `"Unauthorized"` (401)
-  5. Extract scopes from the validated token claims
-  6. Check if the token scopes intersect with the required scopes (OR logic)
+  7. Extract scopes from the validated token claims
+  8. Check if the token scopes intersect with the required scopes (OR logic)
      - **No intersection** &rarr; Deny (403)
      - **Intersection** &rarr; Allow (200)
 
@@ -65,16 +67,17 @@ sequenceDiagram
   C->>AG: Request + Bearer JWT
   AG->>LA: Invoke (REQUEST event)
 
+  note right of LA: Extract Bearer token (if present)<br/>Populate MDC with unverified JWT claims
   note right of LA: Look up operation in permissions.yaml
 
   alt Not configured
     LA-->>AG: Deny policy
     AG-->>C: 403
   else Public (no scopes required)
+    note right of LA: principalId = JWT sub or "anonymous"
     LA-->>AG: Allow policy
     AG->>C: Backend response
   else Scopes required
-    note right of LA: Extract Bearer token
 
     alt No token
       LA--xAG: throw "Unauthorized"
@@ -206,7 +209,7 @@ If any step fails, the Lambda does not start — it will not accept requests in 
 
 ## Structured logging (SLF4J MDC)
 
-Every log line emitted during a request carries the following MDC fields, populated by `LoggingContextConfigurer`. Fields are set in two phases: request context (before any business logic) and JWT context (after token validation). MDC is cleared in a `finally` block at the end of each invocation.
+Every log line emitted during a request carries the following MDC fields, populated by `LoggingContextConfigurer`. Fields are set in two phases: request context (cold start flag, Lambda context, RICE headers, static labels) and JWT context (unverified claims from the Bearer token, if present). Both phases run before any business logic. MDC is cleared in a `finally` block at the end of each invocation.
 
 | MDC key            | Source                                             | Description                                   |
 |--------------------|----------------------------------------------------|-----------------------------------------------|
@@ -222,7 +225,7 @@ Every log line emitted during a request carries the following MDC fields, popula
 | `componentType`    | Env var `APP_CONF_LOGGINGCONTEXT_COMPONENT_TYPE`   | Static component type label                   |
 | `componentName`    | Env var `APP_CONF_LOGGINGCONTEXT_COMPONENT_NAME`   | Static component name label                   |
 
-JWT fields (`jwtIss`, `jwtSub`, `jwtClientId`) are only present when the request reaches token validation — they are absent for public endpoints or when the request fails before token parsing.
+JWT fields (`jwtIss`, `jwtSub`, `jwtClientId`) are populated early from unverified token claims (best-effort decode, no signature check) so that all subsequent log lines carry caller identity — including public endpoints and error paths. They are absent only when no Bearer token is present or the token is too malformed to parse.
 
 ## Integration with the API gateway
   - configure the API gateway to make every request hit the lambda
