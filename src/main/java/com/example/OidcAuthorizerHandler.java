@@ -118,15 +118,10 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
                     "Operation [%s %s] is not configured in permissions".formatted(httpMethod, resource));
             }
 
-            // Public → allow, skip token validation
+            // Public → allow, no token validation, anonymous principal
             if (requiredScopes.get().isEmpty()) {
-                String principalId = token
-                        .map(TokenValidator::parseClaimsUnverified)
-                        .map(JWTClaimsSet::getSubject)
-                        .orElse(ANONYMOUS_PRINCIPAL);
-                LOG.info("Public endpoint [{} {}], allowing without token validation, principalId={}",
-                        httpMethod, resource, principalId);
-                return RestApiGwAuthorizerResponse.builder(principalId)
+                LOG.info("Public endpoint [{} {}], allowing without token", httpMethod, resource);
+                return RestApiGwAuthorizerResponse.builder(ANONYMOUS_PRINCIPAL)
                     .allowMethodArn(event.getMethodArn())
                     .build();
             }

@@ -11,7 +11,7 @@ The lambda returns an IAM policy that is **deny-all by default** — only explic
 | Situation                                                                                    | Status | Error code                    | Mechanism                                |
 |----------------------------------------------------------------------------------------------|--------|-------------------------------|------------------------------------------|
 | Operation NOT in `permissions.yaml`                                                          | 403    | `COMMON_ACCESS_DENIED`        | `Deny` policy                            |
-| Operation is in `permissions.yaml`, but requires no scopes (public)                          | 200    |                               | `Allow` policy, no token validation; `sub` claim used as principalId if token present |
+| Operation is in `permissions.yaml`, but requires no scopes (public)                          | 200    |                               | `Allow` policy, no token validation, principalId is `anonymous` |
 | Operation is in `permissions.yaml`, requires scopes, but no token                            | 401    | `COMMON_MISSING_CREDENTIALS`  | `throw "Unauthorized"`                   |
 | Operation is in `permissions.yaml`, requires scopes, but malformed token                     | 401    | `COMMON_INVALID_CREDENTIALS`  | `throw "Unauthorized"`                   |
 | Operation is in `permissions.yaml`, requires scopes, but unknown issuer                      | 401    | `COMMON_INVALID_ISSUER`       | `throw "Unauthorized"`                   |
@@ -27,7 +27,7 @@ The lambda returns an IAM policy that is **deny-all by default** — only explic
   3. Extract path and HTTP method from the event
   4. Look up the operation in `permissions.yaml`
      - **Not found** &rarr; Deny (403)
-     - **Public** (no scopes required) &rarr; Allow (200), skip token validation; use JWT `sub` as principalId if token present, otherwise `anonymous`
+     - **Public** (no scopes required) &rarr; Allow (200), no token validation, principalId is `anonymous`
      - **Scopes required** &rarr; continue
   5. Require Bearer token
      - **Missing** &rarr; throw `"Unauthorized"` (401)
@@ -74,7 +74,7 @@ sequenceDiagram
     LA-->>AG: Deny policy
     AG-->>C: 403
   else Public (no scopes required)
-    note right of LA: principalId = JWT sub or "anonymous"
+    note right of LA: principalId = "anonymous"
     LA-->>AG: Allow policy
     AG->>C: Backend response
   else Scopes required
