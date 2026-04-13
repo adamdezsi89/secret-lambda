@@ -42,7 +42,8 @@ public final class JwtProcessorFactory {
     }
 
     // Beyond the automatic exp check that Nimbus always performs.
-    private static final Set<String> REQUIRED_CLAIMS = Set.of("sub", "iat");
+    // iss is enforced via exact match in the claims verifier, exp is always enforced by Nimbus.
+    private static final Set<String> REQUIRED_CLAIMS = Set.of("sub", "iat", "jti");
 
     private JwtProcessorFactory() {}
 

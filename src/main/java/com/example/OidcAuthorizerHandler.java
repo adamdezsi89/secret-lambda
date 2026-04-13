@@ -107,6 +107,7 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
 
             String resource = event.getResource();
             String httpMethod = event.getHttpMethod();
+            String methodArn = AuthorizerEventValidator.wildcardMethodArn(event.getMethodArn(), resource);
             LOG.info("Received request: [{} {}]", httpMethod, resource);
 
             Permissions permissions = configurationLoader.getPermissionsConfig();
@@ -118,11 +119,19 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
                     "Operation [%s %s] is not configured in permissions".formatted(httpMethod, resource));
             }
 
-            // Public → allow, no token validation, anonymous principal
+            // Public → allow; validate token if present (reject if invalid, use sub as principalId if valid)
             if (requiredScopes.get().isEmpty()) {
-                LOG.info("Public endpoint [{} {}], allowing without token", httpMethod, resource);
+                if (token.isPresent()) {
+                    JWTClaimsSet claims = TokenValidator.validate(token.get(), jwtProcessors);
+                    LOG.info("Public endpoint [{} {}], token validated, principalId={}",
+                            httpMethod, resource, claims.getSubject());
+                    return RestApiGwAuthorizerResponse.builder(claims.getSubject())
+                        .allowMethodArn(methodArn)
+                        .build();
+                }
+                LOG.info("Public endpoint [{} {}], no token, principalId=anonymous", httpMethod, resource);
                 return RestApiGwAuthorizerResponse.builder(ANONYMOUS_PRINCIPAL)
-                    .allowMethodArn(event.getMethodArn())
+                    .allowMethodArn(methodArn)
                     .build();
             }
 
@@ -146,7 +155,7 @@ public class OidcAuthorizerHandler implements RequestHandler<APIGatewayCustomAut
             }
 
             return RestApiGwAuthorizerResponse.builder(claims.getSubject())
-                .allowMethodArn(event.getMethodArn())
+                .allowMethodArn(methodArn)
                 .build();
 
         } catch (UnauthorizedException e) {

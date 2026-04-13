@@ -18,6 +18,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcAuthorizerHandlerTest {
@@ -88,7 +89,7 @@ class OidcAuthorizerHandlerTest {
     }
 
     @Test
-    void handleRequest_publicEndpoint_withToken_shouldAllow() {
+    void handleRequest_publicEndpoint_withValidToken_shouldAllowWithSubjectPrincipal() {
         String signedJwt = mockOidcServer.createSignedAccessToken(SUBJECT, ISSUER, null);
         APIGatewayCustomAuthorizerEvent event = createRequestEvent(signedJwt, PUBLIC_METHOD, PUBLIC_RESOURCE);
         Context context = createContext();
@@ -96,8 +97,17 @@ class OidcAuthorizerHandlerTest {
         RestApiGwAuthorizerResponse response = handler.handleRequest(event, context);
 
         assertNotNull(response);
-        assertEquals("anonymous", response.principalId());
+        assertEquals(SUBJECT, response.principalId());
         assertAllow(response);
+    }
+
+    @Test
+    void handleRequest_publicEndpoint_withInvalidToken_shouldThrowUnauthorized() {
+        APIGatewayCustomAuthorizerEvent event = createRequestEvent("invalid.jwt.token", PUBLIC_METHOD, PUBLIC_RESOURCE);
+        Context context = createContext();
+
+        RuntimeException ex = assertThrows(RuntimeException.class, () -> handler.handleRequest(event, context));
+        assertEquals("Unauthorized", ex.getMessage());
     }
 
     // ── Unconfigured endpoint ───────────────────────────────────────────────
@@ -203,10 +213,16 @@ class OidcAuthorizerHandlerTest {
     }
 
     private static void assertAllow(RestApiGwAuthorizerResponse response) {
-        assertEquals("Allow", response.policyDocument().Statement().get(0).Effect());
+        RestApiGwAuthorizerResponse.Statement stmt = response.policyDocument().Statement().get(0);
+        assertEquals("Deny", stmt.Effect());
+        assertNotNull(stmt.NotResource(), "Allow policy should use NotResource");
+        assertNull(stmt.Resource(), "Allow policy should not have Resource");
     }
 
     private static void assertDeny(RestApiGwAuthorizerResponse response) {
-        assertEquals("Deny", response.policyDocument().Statement().get(0).Effect());
+        RestApiGwAuthorizerResponse.Statement stmt = response.policyDocument().Statement().get(0);
+        assertEquals("Deny", stmt.Effect());
+        assertNotNull(stmt.Resource(), "Deny policy should use Resource");
+        assertNull(stmt.NotResource(), "Deny policy should not have NotResource");
     }
 }

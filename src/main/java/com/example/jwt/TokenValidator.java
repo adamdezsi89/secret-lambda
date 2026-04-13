@@ -11,6 +11,8 @@ import com.nimbusds.jwt.proc.ConfigurableJWTProcessor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.text.ParseException;
+import java.time.Instant;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -23,6 +25,9 @@ public final class TokenValidator {
 
     private static final String SCOPE_CLAIM = "scope";
     private static final String EXPIRED_INDICATOR = "Expired";
+
+    /** Clock skew tolerance for iat check, matching Nimbus default for exp/nbf. */
+    private static final long MAX_CLOCK_SKEW_SECONDS = 60;
 
     private TokenValidator() {}
 
@@ -63,10 +68,11 @@ public final class TokenValidator {
                 "Issuer '%s' is not in the accepted issuers list".formatted(issuer));
         }
 
-        // 3. Full validation: type, algorithm, signature, claims (iss, sub, iat, exp)
+        // 3. Full validation: type, algorithm, signature, claims (iss, sub, iat, jti, exp)
         // RemoteKeySourceException and JOSEException propagate as-is (500)
         try {
             JWTClaimsSet claims = processor.process(jwt, null);
+            rejectFutureIat(claims);
             LOG.debug("Token validated: iss={}, sub={}", claims.getIssuer(), claims.getSubject());
             return claims;
         } catch (BadJOSEException e) {
@@ -77,6 +83,19 @@ public final class TokenValidator {
             }
             throw new UnauthorizedException(ErrorCodeType.COMMON_INVALID_CREDENTIALS,
                 "Token validation failed: " + message);
+        }
+    }
+
+    /** Rejects tokens with iat in the future (beyond clock skew tolerance). */
+    private static void rejectFutureIat(JWTClaimsSet claims) {
+        Date iat = claims.getIssueTime();
+        if (iat == null) {
+            return;
+        }
+        Instant latestAcceptable = Instant.now().plusSeconds(MAX_CLOCK_SKEW_SECONDS);
+        if (iat.toInstant().isAfter(latestAcceptable)) {
+            throw new UnauthorizedException(ErrorCodeType.COMMON_INVALID_CREDENTIALS,
+                "Token issued in the future: iat=%s".formatted(iat.toInstant()));
         }
     }
 

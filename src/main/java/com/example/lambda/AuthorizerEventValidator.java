@@ -5,6 +5,7 @@ import com.example.lambda.exception.MalformedEventException;
 import lombok.extern.slf4j.Slf4j;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /** Validates the API Gateway authorizer event and extracts the Bearer token. */
 @Slf4j
@@ -14,6 +15,7 @@ public final class AuthorizerEventValidator {
     private static final String EVENT_TYPE_TOKEN = "TOKEN";
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
+    private static final Pattern PATH_PARAM_PATTERN = Pattern.compile("\\{[^}]+}");
 
     private AuthorizerEventValidator() {}
 
@@ -35,6 +37,24 @@ public final class AuthorizerEventValidator {
         if (!EVENT_TYPE_REQUEST.equalsIgnoreCase(type)) {
             throw new MalformedEventException("Unsupported event type: " + type);
         }
+    }
+
+    /**
+     * Replaces path parameter segments ({id}, {name}, etc.) in the method ARN with wildcards.
+     * Returns the ARN unchanged if the resource has no path parameters.
+     */
+    public static String wildcardMethodArn(String methodArn, String resource) {
+        if (!resource.contains("{")) {
+            return methodArn;
+        }
+        // ARN: arn:aws:execute-api:region:account:api-id/stage/METHOD/path
+        int lastColon = methodArn.lastIndexOf(':');
+        String apiPart = methodArn.substring(lastColon + 1);
+        String[] parts = apiPart.split("/", 4);
+        String wildcardedPath = resource.startsWith("/") ? resource.substring(1) : resource;
+        wildcardedPath = PATH_PARAM_PATTERN.matcher(wildcardedPath).replaceAll("*");
+        return methodArn.substring(0, lastColon + 1)
+                + parts[0] + "/" + parts[1] + "/" + parts[2] + "/" + wildcardedPath;
     }
 
     /** Extracts the Bearer token from the Authorization header. Strips the "Bearer " prefix. */

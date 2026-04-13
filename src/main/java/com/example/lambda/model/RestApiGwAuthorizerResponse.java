@@ -5,8 +5,9 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * API Gateway REST (v1) authorizer response. Deny-all by default:
- * add explicit Allow ARNs, or get an explicit Deny "*". No wildcards generated.
+ * API Gateway REST (v1) authorizer response. Uses Deny+NotResource pattern:
+ * allowed ARNs get a Deny on everything else, so cached policies stay safe.
+ * If no ARNs are allowed, an explicit Deny on "*" is emitted as a safety net.
  */
 public record RestApiGwAuthorizerResponse(
     String principalId,
@@ -15,7 +16,6 @@ public record RestApiGwAuthorizerResponse(
 
     public static final String POLICY_VERSION = "2012-10-17";
     public static final String INVOKE_ACTION = "execute-api:Invoke";
-    public static final String EFFECT_ALLOW = "Allow";
     public static final String EFFECT_DENY = "Deny";
 
     public record PolicyDocument(
@@ -26,7 +26,8 @@ public record RestApiGwAuthorizerResponse(
     public record Statement(
         String Action,
         String Effect,
-        List<String> Resource
+        List<String> Resource,
+        List<String> NotResource
     ) {}
 
     public static Builder builder(final String principalId) {
@@ -57,19 +58,24 @@ public record RestApiGwAuthorizerResponse(
             final List<Statement> statements;
 
             if (!allowedMethodArns.isEmpty()) {
-                statements = List.of(
-                    new Statement(
-                        INVOKE_ACTION,
-                        EFFECT_ALLOW,
-                        List.copyOf(allowedMethodArns)
-                    )
-                );
-            } else {
+                // Deny everything EXCEPT the allowed ARNs.
+                // API Gateway implicitly allows what is not denied.
                 statements = List.of(
                     new Statement(
                         INVOKE_ACTION,
                         EFFECT_DENY,
-                        Collections.singletonList("*")
+                        null,
+                        List.copyOf(allowedMethodArns)
+                    )
+                );
+            } else {
+                // No allowed ARNs — explicit deny all.
+                statements = List.of(
+                    new Statement(
+                        INVOKE_ACTION,
+                        EFFECT_DENY,
+                        Collections.singletonList("*"),
+                        null
                     )
                 );
             }
